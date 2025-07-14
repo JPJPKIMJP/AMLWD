@@ -1,0 +1,11 @@
+{
+    "input": {
+        "prompt": "a majestic mountain landscape with snow-capped peaks at sunset, highly detailed, 4k",
+        "negative_prompt": "ugly, blurry, low quality, distorted, deformed",
+        "width": 512,
+        "height": 512,
+        "num_inference_steps": 25,
+        "guidance_scale": 7.5,
+        "seed": 42
+    }
+}
