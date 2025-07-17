@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Function Test</title>
+</head>
+<body>
+    <h1>Test Firebase Function Locally</h1>
+    <button onclick="testFunction()">Test Generate</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testFunction() {
+            const result = document.getElementById('result');
+            result.textContent = 'Testing...';
+            
+            try {
+                // For local testing: http://localhost:5001/YOUR-PROJECT/us-central1/generateImage
+                // For production: https://YOUR-PROJECT.web.app/api/generate
+                const response = await fetch('http://localhost:5001/YOUR-PROJECT/us-central1/generateImage', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        prompt: 'test image'
+                    })
+                });
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                result.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
