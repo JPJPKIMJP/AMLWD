@@ -329,8 +329,8 @@
                 const steps = parseInt(document.getElementById('steps').value);
                 const guidance = parseFloat(document.getElementById('guidance').value);
                 
-                // Try test endpoint first for demo
-                const response = await fetch(`${API_URL}/test-local`, {
+                // Use real generation endpoint
+                const response = await fetch(`${API_URL}/generate`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -345,40 +345,21 @@
                 });
                 
                 if (!response.ok) {
-                    // If test endpoint fails, try real endpoint
-                    const realResponse = await fetch(`${API_URL}/generate`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            prompt: prompt,
-                            width: width,
-                            height: height,
-                            num_inference_steps: steps,
-                            guidance_scale: guidance
-                        })
-                    });
-                    
-                    if (!realResponse.ok) {
-                        throw new Error('Failed to start generation');
-                    }
-                    
-                    const data = await realResponse.json();
+                    throw new Error('Failed to start generation');
+                }
+                
+                const data = await response.json();
+                
+                // Handle job-based response from RunPod
+                if (data.job_id) {
                     const jobId = data.job_id;
                     showStatus('Generating image... This may take 30-60 seconds', 'loading');
                     await pollForResult(jobId);
-                } else {
-                    const data = await response.json();
-                    
-                    // For test endpoint, we get the result immediately
-                    if (data.image_base64) {
-                        // Simulate some delay for demo
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        displayImage(data);
-                        showStatus('Image generated successfully!', 'success');
-                        setTimeout(hideStatus, 3000);
-                    }
+                } else if (data.image_base64) {
+                    // Direct response (for test mode)
+                    displayImage(data);
+                    showStatus('Image generated successfully!', 'success');
+                    setTimeout(hideStatus, 3000);
                 }
                 
             } catch (error) {

@@ -1,181 +1,123 @@
 const API_URL = 'http://localhost:8000';
-let currentJobId = null;
-let generationHistory = [];
 
 document.getElementById('generate-btn').addEventListener('click', generateImage);
-document.getElementById('download-btn').addEventListener('click', downloadImage);
 
 async function generateImage() {
     const prompt = document.getElementById('prompt').value.trim();
+    const generateBtn = document.getElementById('generate-btn');
+    const status = document.getElementById('status');
+    const output = document.getElementById('output');
     
     if (!prompt) {
         showStatus('Please enter a prompt', 'error');
         return;
     }
     
-    const generateBtn = document.getElementById('generate-btn');
+    // Disable button and show loading
     generateBtn.disabled = true;
     generateBtn.textContent = 'Generating...';
-    
-    const requestData = {
-        prompt: prompt,
-        negative_prompt: document.getElementById('negative-prompt').value,
-        width: parseInt(document.getElementById('width').value),
-        height: parseInt(document.getElementById('height').value),
-        num_inference_steps: parseInt(document.getElementById('steps').value),
-        guidance_scale: parseFloat(document.getElementById('guidance').value),
-        seed: parseInt(document.getElementById('seed').value)
-    };
+    showStatus('Starting image generation...', 'loading');
+    output.classList.remove('show');
     
     try {
+        // Use real generation endpoint
         const response = await fetch(`${API_URL}/generate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify({
+                prompt: prompt,
+                width: 512,
+                height: 512,
+                num_inference_steps: 20,
+                guidance_scale: 7.5
+            })
         });
         
         if (!response.ok) {
-            throw new Error('Generation failed');
+            throw new Error('Failed to start generation');
         }
         
         const data = await response.json();
-        currentJobId = data.job_id;
         
-        showStatus('Generation started. Waiting for result...', 'success');
-        pollForResult(currentJobId);
+        // Handle job-based response
+        if (data.job_id) {
+            const jobId = data.job_id;
+            showStatus('Generating image... This may take 30-60 seconds', 'loading');
+            await pollForResult(jobId);
+        } else if (data.image_base64) {
+            // Direct response (shouldn't happen with RunPod)
+            displayImage(data);
+            showStatus('Image generated successfully!', 'success');
+            setTimeout(hideStatus, 3000);
+        }
         
     } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
+    } finally {
         generateBtn.disabled = false;
-        generateBtn.textContent = 'Generate Image';
+        generateBtn.textContent = 'Generate';
     }
 }
 
 async function pollForResult(jobId) {
-    const pollInterval = setInterval(async () => {
+    const maxAttempts = 60; // 2 minutes max
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
         try {
             const response = await fetch(`${API_URL}/status/${jobId}`);
             const data = await response.json();
             
             if (data.status === 'completed') {
-                clearInterval(pollInterval);
-                displayResult(data.result);
-                addToHistory(data.result);
-                
-                const generateBtn = document.getElementById('generate-btn');
-                generateBtn.disabled = false;
-                generateBtn.textContent = 'Generate Image';
-                
-                showStatus('Image generated successfully!', 'success');
-                
+                displayImage(data.result);
+                hideStatus();
+                return;
             } else if (data.status === 'failed') {
-                clearInterval(pollInterval);
-                showStatus(`Generation failed: ${data.error || 'Unknown error'}`, 'error');
-                
-                const generateBtn = document.getElementById('generate-btn');
-                generateBtn.disabled = false;
-                generateBtn.textContent = 'Generate Image';
+                throw new Error(data.error || 'Generation failed');
             }
             
-        } catch (error) {
-            clearInterval(pollInterval);
-            showStatus(`Error checking status: ${error.message}`, 'error');
+            // Wait 2 seconds before next poll
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            attempts++;
             
-            const generateBtn = document.getElementById('generate-btn');
-            generateBtn.disabled = false;
-            generateBtn.textContent = 'Generate Image';
+        } catch (error) {
+            throw error;
         }
-    }, 2000);
+    }
+    
+    throw new Error('Generation timed out');
 }
 
-function displayResult(result) {
-    const resultDiv = document.getElementById('result');
+function displayImage(result) {
+    const output = document.getElementById('output');
     const img = document.getElementById('generated-image');
     
     img.src = `data:image/png;base64,${result.image_base64}`;
-    document.getElementById('image-seed').textContent = result.seed;
-    document.getElementById('image-prompt').textContent = result.prompt;
-    
-    resultDiv.classList.remove('hidden');
-}
-
-function addToHistory(result) {
-    generationHistory.unshift({
-        ...result,
-        timestamp: new Date().toISOString()
-    });
-    
-    if (generationHistory.length > 12) {
-        generationHistory = generationHistory.slice(0, 12);
-    }
-    
-    updateHistoryDisplay();
-}
-
-function updateHistoryDisplay() {
-    const historyGrid = document.getElementById('history-grid');
-    historyGrid.innerHTML = '';
-    
-    generationHistory.forEach((item, index) => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'history-item';
-        historyItem.innerHTML = `
-            <img src="data:image/png;base64,${item.image_base64}" alt="Generated image">
-            <p>${item.prompt}</p>
-        `;
-        
-        historyItem.addEventListener('click', () => {
-            displayResult(item);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-        
-        historyGrid.appendChild(historyItem);
-    });
-}
-
-function downloadImage() {
-    const img = document.getElementById('generated-image');
-    const link = document.createElement('a');
-    link.href = img.src;
-    link.download = `ai-generated-${Date.now()}.png`;
-    link.click();
+    output.classList.add('show');
 }
 
 function showStatus(message, type) {
-    const statusDiv = document.getElementById('status');
-    statusDiv.textContent = message;
-    statusDiv.className = `status ${type}`;
-    statusDiv.classList.remove('hidden');
-    
-    if (type === 'success') {
-        setTimeout(() => {
-            statusDiv.classList.add('hidden');
-        }, 5000);
-    }
+    const status = document.getElementById('status');
+    status.textContent = message;
+    status.className = `status show ${type}`;
 }
 
-// For local testing without RunPod
-async function testLocalGeneration() {
-    const response = await fetch(`${API_URL}/test-local`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            prompt: document.getElementById('prompt').value,
-            negative_prompt: document.getElementById('negative-prompt').value,
-            width: parseInt(document.getElementById('width').value),
-            height: parseInt(document.getElementById('height').value),
-            num_inference_steps: parseInt(document.getElementById('steps').value),
-            guidance_scale: parseFloat(document.getElementById('guidance').value),
-            seed: parseInt(document.getElementById('seed').value)
-        })
-    });
+function hideStatus() {
+    const status = document.getElementById('status');
+    status.classList.remove('show');
+}
+
+// For testing without backend
+async function testGeneration() {
+    showStatus('Generating test image...', 'loading');
     
-    const result = await response.json();
-    displayResult(result);
-    addToHistory(result);
-    showStatus('Test image generated!', 'success');
+    // Simulate delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Display a placeholder image
+    const placeholderImage = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    displayImage({ image_base64: placeholderImage });
+    hideStatus();
 }

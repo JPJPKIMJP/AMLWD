@@ -9,6 +9,10 @@ import base64
 import os
 from datetime import datetime
 import uuid
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(title="AI Image Generation API")
 
@@ -100,12 +104,35 @@ async def list_jobs():
 
 @app.post("/test-local")
 async def test_local_generation(request: ImageGenerationRequest):
-    """Test endpoint that returns a placeholder image for local development"""
+    """Test endpoint that returns a gradient image for local development"""
     
-    placeholder_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    # Create a colorful gradient image as base64
+    import io
+    from PIL import Image, ImageDraw
+    
+    # Create gradient image
+    width, height = request.width, request.height
+    img = Image.new('RGB', (width, height))
+    draw = ImageDraw.Draw(img)
+    
+    # Create a purple to blue gradient
+    for y in range(height):
+        r = int(102 + (147 - 102) * y / height)  # Purple to blue
+        g = int(126 - 50 * y / height)
+        b = int(234 - 50 * y / height)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+    
+    # Add text
+    draw.text((width//2 - 100, height//2 - 20), "AI Generated", fill=(255, 255, 255))
+    draw.text((width//2 - 120, height//2 + 10), f"Prompt: {request.prompt[:30]}...", fill=(255, 255, 255))
+    
+    # Convert to base64
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
     
     return {
-        "image_base64": placeholder_image,
+        "image_base64": image_base64,
         "seed": request.seed if request.seed != -1 else 12345,
         "prompt": request.prompt,
         "width": request.width,
