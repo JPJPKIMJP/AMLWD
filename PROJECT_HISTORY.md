@@ -6,8 +6,8 @@
 Implemented secure Firebase authentication and API key management for the AMLWD image generation platform. Removed all hardcoded API keys and implemented a secure, authenticated system.
 
 ### Initial Security Issues Found
-- **RunPod API Key Exposed**: `rpa_FK9XB61YQGYODPNXBWE21FHKXYVY3V6V1DA7HB111sncts` (now invalid)
-- **RunPod Endpoint ID Exposed**: `6f3dkzdg44elpj`
+- **RunPod API Key Exposed**: [REDACTED - key no longer valid]
+- **RunPod Endpoint ID Exposed**: [REDACTED]
 - These were hardcoded in multiple files:
   - firebase-setup.sh
   - firebase-setup.bat
