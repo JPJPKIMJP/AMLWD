@@ -174,6 +174,16 @@ The `.github/workflows/docker-build.yml` will automatically build and push your 
 2. **Backend**: Deploy to Railway/Render ($5-10/month)
 3. **RunPod**: Pay per generation (~$0.0003/sec)
 
+### Firebase Deployment
+
+This project includes Firebase hosting and functions support:
+
+- **Live URL**: https://amlwd-image-gen.web.app
+- **API Endpoint**: https://amlwd-image-gen.web.app/api
+- **Project ID**: amlwd-image-gen
+
+See `firebase-config.json` for complete Firebase configuration details.
+
 ### Security
 
 - Add authentication to backend

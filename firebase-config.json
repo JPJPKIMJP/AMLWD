@@ -1,0 +1,18 @@
+{
+  "project": {
+    "id": "amlwd-image-gen",
+    "name": "amlwd-image-gen",
+    "number": "402827177676"
+  },
+  "hosting": {
+    "site": "amlwd-image-gen",
+    "url": "https://amlwd-image-gen.web.app"
+  },
+  "api": {
+    "endpoint": "https://amlwd-image-gen.web.app/api",
+    "generateImage": "https://amlwd-image-gen.web.app/api/generate"
+  },
+  "functions": {
+    "region": "us-central1"
+  }
+}
