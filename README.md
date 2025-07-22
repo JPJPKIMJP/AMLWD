@@ -2,6 +2,10 @@
 
 A complete AI image generation platform with RunPod serverless backend, REST API, and modern web interface.
 
+> **📋 Project History**: See [PROJECT_HISTORY.md](PROJECT_HISTORY.md) for detailed development history and recent changes.
+
+> **🔒 Security Update (July 2025)**: This project now uses secure authentication. Visit https://amlwd-image-gen.web.app/secure.html for the authenticated version.
+
 ## Architecture
 
 ```
