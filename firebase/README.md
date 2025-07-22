@@ -23,8 +23,13 @@
 
 4. **Set your RunPod credentials**
    ```bash
-   firebase functions:config:set runpod.api_key="rpa_FK9XB61YQGYODPNXBWE21FHKXYVY3V6V1DA7HB111sncts"
-   firebase functions:config:set runpod.endpoint_id="6f3dkzdg44elpj"
+   # First, export your credentials as environment variables
+   export RUNPOD_API_KEY="your-runpod-api-key"
+   export RUNPOD_ENDPOINT_ID="your-runpod-endpoint-id"
+   
+   # Then set them in Firebase
+   firebase functions:config:set runpod.api_key="$RUNPOD_API_KEY"
+   firebase functions:config:set runpod.endpoint_id="$RUNPOD_ENDPOINT_ID"
    ```
 
 5. **Deploy**

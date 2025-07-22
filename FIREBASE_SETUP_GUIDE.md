@@ -41,10 +41,24 @@ When running `firebase init`, select:
 
 ## Step 4: Set RunPod Credentials
 
+First, set your RunPod credentials as environment variables:
+
+```bash
+# On Linux/Mac:
+export RUNPOD_API_KEY="your-runpod-api-key"
+export RUNPOD_ENDPOINT_ID="your-runpod-endpoint-id"
+
+# On Windows:
+set RUNPOD_API_KEY=your-runpod-api-key
+set RUNPOD_ENDPOINT_ID=your-runpod-endpoint-id
+```
+
+Then set them in Firebase:
+
 ```bash
 # Set your RunPod credentials as Firebase config
-firebase functions:config:set runpod.api_key="rpa_FK9XB61YQGYODPNXBWE21FHKXYVY3V6V1DA7HB111sncts"
-firebase functions:config:set runpod.endpoint_id="6f3dkzdg44elpj"
+firebase functions:config:set runpod.api_key="$RUNPOD_API_KEY"
+firebase functions:config:set runpod.endpoint_id="$RUNPOD_ENDPOINT_ID"
 ```
 
 ## Step 5: Install Function Dependencies

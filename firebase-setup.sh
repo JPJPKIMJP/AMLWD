@@ -24,8 +24,23 @@ echo ""
 echo "📝 Step 3: Setting RunPod Credentials"
 echo "------------------------------------"
 echo "Setting your RunPod API credentials..."
-firebase functions:config:set runpod.api_key="rpa_FK9XB61YQGYODPNXBWE21FHKXYVY3V6V1DA7HB111sncts"
-firebase functions:config:set runpod.endpoint_id="6f3dkzdg44elpj"
+
+# Check for environment variables
+if [ -z "$RUNPOD_API_KEY" ] || [ -z "$RUNPOD_ENDPOINT_ID" ]; then
+    echo "❌ Error: RunPod credentials not found!"
+    echo ""
+    echo "Please set the following environment variables:"
+    echo "  export RUNPOD_API_KEY='your-runpod-api-key'"
+    echo "  export RUNPOD_ENDPOINT_ID='your-runpod-endpoint-id'"
+    echo ""
+    echo "Or create a .env file in the project root with:"
+    echo "  RUNPOD_API_KEY=your-runpod-api-key"
+    echo "  RUNPOD_ENDPOINT_ID=your-runpod-endpoint-id"
+    exit 1
+fi
+
+firebase functions:config:set runpod.api_key="$RUNPOD_API_KEY"
+firebase functions:config:set runpod.endpoint_id="$RUNPOD_ENDPOINT_ID"
 
 echo ""
 echo "📝 Step 4: Installing Dependencies"
