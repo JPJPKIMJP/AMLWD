@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only authenticated users can read/write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Image generation logs - only readable by the user who created them
+    match /image_generations/{document} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow write: if false; // Only cloud functions can write
+    }
+    
+    // API keys collection - no client access
+    match /api_keys/{document} {
+      allow read, write: if false;
+    }
+  }
+}
