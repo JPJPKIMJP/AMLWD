@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure AMLWD Image Generator</title>
+    <title>Secure AMLWD Image Generator v2.1</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -64,6 +64,9 @@
 </head>
 <body>
     <h1>🔒 Secure AMLWD Image Generator</h1>
+    <div style="text-align: center; font-size: 0.8em; color: #666; margin-bottom: 10px;">
+        Version: <span id="version">checking...</span>
+    </div>
     
     <!-- Authentication Container -->
     <div id="authContainer" class="auth-container">
@@ -123,6 +126,7 @@
             </div>
             
             <button id="generateBtn" onclick="generateImage()">Generate Image</button>
+            <button id="resetBtn" onclick="resetRateLimit()" style="display:none; background-color: #ff9800;">Reset My Rate Limit (Admin)</button>
             <div id="status"></div>
             <div id="result"></div>
         </div>
@@ -148,6 +152,16 @@
         const auth = firebase.auth();
         const functions = firebase.functions();
         
+        // Check version
+        fetch('https://us-central1-amlwd-image-gen.cloudfunctions.net/healthCheck')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('version').textContent = data.version || 'unknown';
+            })
+            .catch(() => {
+                document.getElementById('version').textContent = 'error';
+            });
+        
         // Auth state observer
         auth.onAuthStateChanged((user) => {
             if (user) {
@@ -155,6 +169,11 @@
                 document.getElementById('authContainer').style.display = 'none';
                 document.getElementById('generatorContainer').style.display = 'block';
                 document.getElementById('userEmail').textContent = user.email;
+                
+                // Show reset button for admin
+                if (user.email === 'goooodjp@gmail.com') {
+                    document.getElementById('resetBtn').style.display = 'inline-block';
+                }
             } else {
                 // User is signed out
                 document.getElementById('authContainer').style.display = 'block';
@@ -265,6 +284,27 @@
                 }
             } finally {
                 generateBtn.disabled = false;
+            }
+        }
+        
+        // Reset Rate Limit (Admin only)
+        async function resetRateLimit() {
+            const resetBtn = document.getElementById('resetBtn');
+            const statusEl = document.getElementById('status');
+            
+            resetBtn.disabled = true;
+            statusEl.innerHTML = '<p>Resetting rate limit...</p>';
+            
+            try {
+                const resetRateLimitFn = functions.httpsCallable('resetRateLimit');
+                const result = await resetRateLimitFn();
+                
+                statusEl.innerHTML = '<p class="success">Rate limit reset successfully!</p>';
+                setTimeout(() => statusEl.innerHTML = '', 3000);
+            } catch (error) {
+                statusEl.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            } finally {
+                resetBtn.disabled = false;
             }
         }
     </script>
