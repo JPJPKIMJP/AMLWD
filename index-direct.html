@@ -340,11 +340,16 @@
                     body: JSON.stringify({
                         input: {
                             prompt: prompt,
+                            negative_prompt: "",
                             width: width,
                             height: height,
                             num_inference_steps: steps,
-                            guidance_scale: guidance,
-                            seed: -1
+                            cfg: guidance,  // SDXL uses 'cfg' instead of 'guidance_scale'
+                            seed: -1,
+                            sampler_name: "DPM++ 2M Karras",   // SDXL sampler
+                            batch_size: 1,
+                            scheduler: "karras",
+                            return_type: "base64"  // Explicitly request base64 output
                         }
                     })
                 });
@@ -355,11 +360,35 @@
                 }
                 
                 const data = await response.json();
+                console.log('RunPod response:', data);
                 
-                if (data.status === 'COMPLETED' && data.output && data.output.image_base64) {
-                    displayImage(data.output);
-                    showStatus('Image generated successfully!', 'success');
-                    setTimeout(hideStatus, 3000);
+                // Handle different response formats
+                let imageData = null;
+                
+                if (data.status === 'COMPLETED') {
+                    // Check various output formats
+                    if (data.output?.image_base64) {
+                        imageData = { image_base64: data.output.image_base64 };
+                    } else if (data.output && typeof data.output === 'string') {
+                        imageData = { image_base64: data.output };
+                    } else if (Array.isArray(data.output) && data.output[0]) {
+                        imageData = { image_base64: data.output[0] };
+                    } else if (data.output?.image) {
+                        imageData = { image_base64: data.output.image };
+                    } else if (data.id && !data.output) {
+                        // If no output but has ID, might need to fetch separately
+                        showStatus('Image completed, fetching result...', 'loading');
+                        // For now, throw error - in production, would fetch from status endpoint
+                        throw new Error('Image generation completed but output not in expected format. Check console for details.');
+                    }
+                    
+                    if (imageData) {
+                        displayImage(imageData);
+                        showStatus('Image generated successfully!', 'success');
+                        setTimeout(hideStatus, 3000);
+                    } else {
+                        throw new Error('No image data found in response');
+                    }
                 } else if (data.status === 'FAILED') {
                     throw new Error(data.error || 'Generation failed');
                 } else {

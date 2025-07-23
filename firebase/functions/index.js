@@ -175,19 +175,60 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
       body: JSON.stringify({
         input: {
           prompt: validatedInput.prompt,
+          negative_prompt: "",
           width: validatedInput.width,
           height: validatedInput.height,
           num_inference_steps: validatedInput.steps,
-          guidance_scale: validatedInput.guidance_scale,
+          cfg: validatedInput.guidance_scale,  // SDXL uses 'cfg' instead of 'guidance_scale'
+          seed: -1,
+          sampler_name: "DPM++ 2M Karras",   // SDXL sampler
+          batch_size: 1,
+          scheduler: "karras",
+          return_type: "base64"  // Explicitly request base64 output
         }
       })
     });
 
     const result = await response.json();
+    console.log('RunPod response:', JSON.stringify(result));
 
-    if (!response.ok || !result.output?.image_base64) {
+    if (!response.ok) {
       console.error('RunPod API error:', result);
       throw new functions.https.HttpsError('internal', 'Failed to generate image');
+    }
+
+    // Handle RunPod response - check if we need to fetch the result
+    let imageBase64;
+    
+    // If status is COMPLETED but no output, it might be using async pattern
+    if (result.status === 'COMPLETED' && result.id && !result.output) {
+      // Try fetching the result using the job ID
+      const statusResponse = await fetch(`https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${result.id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${RUNPOD_API_KEY}`,
+        }
+      });
+      
+      if (statusResponse.ok) {
+        const statusResult = await statusResponse.json();
+        console.log('Status response:', JSON.stringify(statusResult));
+        result.output = statusResult.output;
+      }
+    }
+    
+    // Now check for the image in various formats
+    if (result.output?.image_base64) {
+      imageBase64 = result.output.image_base64;
+    } else if (result.output && typeof result.output === 'string') {
+      imageBase64 = result.output;
+    } else if (Array.isArray(result.output) && result.output[0]) {
+      imageBase64 = result.output[0];
+    } else if (result.output?.image) {
+      imageBase64 = result.output.image;
+    } else {
+      console.error('Unexpected output format:', result);
+      throw new functions.https.HttpsError('internal', 'Invalid image format received');
     }
 
     const processingTime = Date.now() - startTime;
@@ -208,8 +249,8 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
 
     return {
       success: true,
-      image: result.output.image_base64,
-      seed: result.output.seed,
+      image: imageBase64,
+      seed: result.output?.seed || -1,
       processingTime: processingTime
     };
 
