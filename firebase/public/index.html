@@ -427,8 +427,10 @@
                     }
                 }
                 
-                // Call the secure Firebase function
-                const generateImageSecure = functions.httpsCallable('generateImageSecure');
+                // Call the secure Firebase function with extended timeout for FLUX
+                const generateImageSecure = functions.httpsCallable('generateImageSecure', {
+                    timeout: 540000  // 9 minutes timeout for FLUX generation
+                });
                 const result = await generateImageSecure(params);
                 
                 // Stop timer

@@ -216,11 +216,28 @@ class FluxHandler:
             logger.error(f"Failed to queue prompt: {str(e)}")
             raise
     
-    def wait_for_image(self, prompt_id: str, timeout: int = 120) -> bytes:
+    def wait_for_image(self, prompt_id: str, timeout: int = 300) -> bytes:
         """Wait for and retrieve generated image"""
         start_time = time.time()
         
+        last_log_time = start_time
         while time.time() - start_time < timeout:
+            # Log progress every 30 seconds
+            if time.time() - last_log_time > 30:
+                elapsed = int(time.time() - start_time)
+                logger.info(f"Still waiting for image... {elapsed}s elapsed")
+                last_log_time = time.time()
+                
+            # Check queue status first
+            queue_response = requests.get(f"{self.server_url}/queue")
+            queue_data = queue_response.json()
+            
+            # Log if our prompt is still in queue
+            if queue_data.get('queue_running'):
+                for item in queue_data['queue_running']:
+                    if item[1] == prompt_id:
+                        logger.debug(f"Prompt {prompt_id} is currently being processed")
+                        
             # Check history
             response = requests.get(f"{self.server_url}/history/{prompt_id}")
             history = response.json()

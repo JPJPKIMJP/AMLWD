@@ -693,7 +693,12 @@ exports.resetRateLimit = functions.https.onCall(async (data, context) => {
 });
 
 // Test RunPod endpoint - callable function for testing
-exports.testRunPod = functions.https.onCall(async (data, context) => {
+exports.testRunPod = functions
+  .runWith({
+    timeoutSeconds: 540,
+    memory: '2GB'
+  })
+  .https.onCall(async (data, context) => {
   // Check if user is authenticated
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'You must be logged in');
