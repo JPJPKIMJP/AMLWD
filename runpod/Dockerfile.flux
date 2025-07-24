@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install runpod boto3 requests
 
 # Install numpy and other scientific packages that FLUX needs
+# Force rebuild: 2024-07-25
 RUN pip install --no-cache-dir numpy pillow scipy
 
 # Volume mount point - uses your existing volume
