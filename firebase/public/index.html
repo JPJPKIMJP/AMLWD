@@ -640,8 +640,17 @@
             modal.appendChild(img);
             modal.appendChild(closeBtn);
             
-            modal.onclick = () => document.body.removeChild(modal);
-            closeBtn.onclick = () => document.body.removeChild(modal);
+            modal.onclick = () => {
+                if (modal.parentNode) {
+                    document.body.removeChild(modal);
+                }
+            };
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (modal.parentNode) {
+                    document.body.removeChild(modal);
+                }
+            };
             
             document.body.appendChild(modal);
         }

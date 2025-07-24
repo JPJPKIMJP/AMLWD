@@ -274,12 +274,12 @@ exports.generateImageSecure = functions
     // Handle RunPod response - check if we need to fetch the result
     let imageBase64;
     
-    // Handle IN_PROGRESS status (FLUX takes too long for sync endpoint)
-    if (result.status === 'IN_PROGRESS' && result.id) {
-      console.log('Job still in progress, polling for completion...');
+    // Handle IN_PROGRESS or IN_QUEUE status (FLUX takes too long for sync endpoint)
+    if ((result.status === 'IN_PROGRESS' || result.status === 'IN_QUEUE') && result.id) {
+      console.log(`Job status: ${result.status}, polling for completion...`);
       
-      // Poll for up to 5 minutes
-      const maxAttempts = 60; // 60 * 5 seconds = 5 minutes
+      // Poll for up to 8 minutes (leaving buffer for 9-minute function timeout)
+      const maxAttempts = 96; // 96 * 5 seconds = 8 minutes
       let attempts = 0;
       
       while (attempts < maxAttempts) {
@@ -309,7 +309,7 @@ exports.generateImageSecure = functions
       }
       
       if (attempts >= maxAttempts) {
-        throw new functions.https.HttpsError('deadline-exceeded', 'Image generation timed out after 5 minutes');
+        throw new functions.https.HttpsError('deadline-exceeded', 'Image generation timed out after 8 minutes');
       }
     }
     
