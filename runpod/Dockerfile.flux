@@ -16,16 +16,19 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git /ComfyUI
 
 WORKDIR /ComfyUI
 
+# Install numpy first to ensure it's available
+RUN pip install --no-cache-dir numpy==1.24.3
+
 # Install ComfyUI requirements
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install additional requirements for RunPod and R2
-RUN pip install runpod boto3 requests
+RUN pip install --no-cache-dir runpod boto3 requests
 
-# Install numpy and other scientific packages that FLUX needs
-# Force rebuild: 2024-07-25
-RUN pip install --no-cache-dir numpy pillow scipy
+# Install image processing packages that FLUX needs
+# Force rebuild: 2025-07-24 - Fixed numpy availability issue
+RUN pip install --no-cache-dir --force-reinstall numpy==1.24.3 pillow scipy
 
 # Volume mount point - uses your existing volume
 VOLUME ["/workspace"]
