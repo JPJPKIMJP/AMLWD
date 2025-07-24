@@ -35,5 +35,8 @@
           tags: |
             jpjpkimjp/flux-comfyui:latest
             jpjpkimjp/flux-comfyui:${{ github.sha }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=0
           cache-from: type=gha
+          no-cache: true
           cache-to: type=gha,mode=max
