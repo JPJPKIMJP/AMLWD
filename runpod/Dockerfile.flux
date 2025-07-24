@@ -30,6 +30,8 @@ VOLUME ["/workspace"]
 COPY src/flux_handler.py /handler.py
 COPY src/workflows/flux_simple.json /workflows/flux_simple.json
 COPY src/workflows/flux_checkpoint.json /workflows/flux_checkpoint.json
+COPY src/workflows/flux_actual.json /workflows/flux_actual.json
+COPY src/workflows/flux_img2img.json /workflows/flux_img2img.json
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 

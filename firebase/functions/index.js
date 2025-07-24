@@ -129,6 +129,9 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
 
   // Validate input
   const validatedInput = validateInput(data);
+  
+  // Extract image if provided (for img2img)
+  const inputImageBase64 = data.image;
 
   // Check if user is admin
   const userId = context.auth.uid;
@@ -235,6 +238,8 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
           prompt: validatedInput.prompt,
           width: validatedInput.width,
           height: validatedInput.height,
+          // Add image for img2img if provided
+          ...(inputImageBase64 && { image: inputImageBase64 }),
           // FLUX doesn't use these traditional parameters
           // num_inference_steps: validatedInput.steps,
           // guidance_scale: validatedInput.guidance_scale,

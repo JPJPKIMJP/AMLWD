@@ -111,6 +111,16 @@
                 <textarea id="negativePrompt" rows="2"></textarea>
             </div>
             
+            <!-- Image-to-Image Input -->
+            <div style="margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 5px;">
+                <label><strong>Input Image (Optional - for image-to-image):</strong></label>
+                <input type="file" id="inputImage" accept="image/*" onchange="handleImageSelect(event)" style="margin: 5px 0;">
+                <div id="inputImagePreview" style="margin-top: 10px; display: none;">
+                    <img id="previewImg" style="max-width: 300px; max-height: 300px; border: 1px solid #ddd; border-radius: 5px;">
+                    <button onclick="clearInputImage()" style="display: block; margin-top: 5px; background-color: #f44336;">Clear Image</button>
+                </div>
+            </div>
+            
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <label>Width:</label>
@@ -159,6 +169,7 @@
                 • Higher quality than SD 1.5<br>
                 • Best at 1024x1024 resolution<br>
                 • No negative prompts needed<br>
+                • Supports image-to-image generation<br>
                 • Images stored in R2 cloud storage
             </div>
             <div id="timer" style="display:none; font-size: 0.9em; color: #666; margin-top: 5px;">
@@ -324,6 +335,31 @@
         // Load image history on startup
         loadImageHistory();
         
+        // Image-to-Image handling
+        let selectedImageBase64 = null;
+        
+        function handleImageSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // Show preview
+                    document.getElementById('previewImg').src = e.target.result;
+                    document.getElementById('inputImagePreview').style.display = 'block';
+                    
+                    // Store base64 (remove data:image/xxx;base64, prefix)
+                    selectedImageBase64 = e.target.result.split(',')[1];
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function clearInputImage() {
+            selectedImageBase64 = null;
+            document.getElementById('inputImage').value = '';
+            document.getElementById('inputImagePreview').style.display = 'none';
+        }
+        
         // Generate Image (Secure)
         async function generateImage() {
             const generateBtn = document.getElementById('generateBtn');
@@ -383,6 +419,12 @@
                         refiner_inference_steps: parseInt(document.getElementById('refinerSteps').value),
                         high_noise_frac: parseFloat(document.getElementById('highNoiseFrac').value)
                     };
+                    
+                    // Add image for image-to-image
+                    if (selectedImageBase64) {
+                        params.image = selectedImageBase64;
+                        statusEl.innerHTML += '<p>Using image-to-image mode...</p>';
+                    }
                 }
                 
                 // Call the secure Firebase function
