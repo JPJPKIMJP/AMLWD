@@ -23,6 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install additional requirements for RunPod and R2
 RUN pip install runpod boto3 requests
 
+# Install numpy and other scientific packages that FLUX needs
+RUN pip install --no-cache-dir numpy pillow scipy
+
 # Volume mount point - uses your existing volume
 VOLUME ["/workspace"]
 

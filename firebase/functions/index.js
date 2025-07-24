@@ -274,6 +274,45 @@ exports.generateImageSecure = functions
     // Handle RunPod response - check if we need to fetch the result
     let imageBase64;
     
+    // Handle IN_PROGRESS status (FLUX takes too long for sync endpoint)
+    if (result.status === 'IN_PROGRESS' && result.id) {
+      console.log('Job still in progress, polling for completion...');
+      
+      // Poll for up to 5 minutes
+      const maxAttempts = 60; // 60 * 5 seconds = 5 minutes
+      let attempts = 0;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        
+        const statusResponse = await fetch(`https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${result.id}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${RUNPOD_API_KEY}`,
+          }
+        });
+        
+        if (statusResponse.ok) {
+          const statusResult = await statusResponse.json();
+          console.log(`Attempt ${attempts + 1}: Status = ${statusResult.status}`);
+          
+          if (statusResult.status === 'COMPLETED') {
+            result = statusResult;
+            break;
+          } else if (statusResult.status === 'FAILED') {
+            console.error('Job failed:', statusResult);
+            throw new functions.https.HttpsError('internal', `RunPod job failed: ${statusResult.error || 'Unknown error'}`);
+          }
+        }
+        
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        throw new functions.https.HttpsError('deadline-exceeded', 'Image generation timed out after 5 minutes');
+      }
+    }
+    
     // If status is COMPLETED but no output, try the async pattern
     if (result.status === 'COMPLETED' && result.id && !result.output) {
       console.log('No output in sync response, trying async pattern...');
