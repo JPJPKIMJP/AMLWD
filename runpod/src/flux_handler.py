@@ -128,6 +128,44 @@ class FluxHandler:
             if os.path.exists(mount):
                 logger.info(f"Mount point {mount} exists. Contents: {os.listdir(mount)[:10]}")
                 
+        # Specifically check for FLUX model
+        flux_model = "flux1-dev-kontext_fp8_scaled.safetensors"
+        flux_locations = [
+            f"/ComfyUI/models/diffusion_models/{flux_model}",
+            f"/ComfyUI/models/checkpoints/{flux_model}",
+            f"/ComfyUI/models/unet/{flux_model}",
+            f"/runpod-volume/ComfyUI/models/diffusion_models/{flux_model}",
+            f"/runpod-volume/ComfyUI/models/checkpoints/{flux_model}",
+            f"/workspace/ComfyUI/models/diffusion_models/{flux_model}"
+        ]
+        
+        logger.info(f"Searching for FLUX model: {flux_model}")
+        for path in flux_locations:
+            if os.path.exists(path):
+                logger.info(f"✓ FLUX MODEL FOUND at: {path}")
+                logger.info(f"  File size: {os.path.getsize(path) / (1024**3):.2f} GB")
+            else:
+                logger.debug(f"✗ Not at: {path}")
+                
+        # Check diffusion_models directory specifically
+        logger.info("Checking diffusion_models directories:")
+        diffusion_dirs = [
+            "/ComfyUI/models/diffusion_models",
+            "/runpod-volume/ComfyUI/models/diffusion_models",
+            "/workspace/ComfyUI/models/diffusion_models"
+        ]
+        
+        for dir_path in diffusion_dirs:
+            if os.path.exists(dir_path):
+                logger.info(f"Directory {dir_path} exists")
+                files = os.listdir(dir_path)
+                logger.info(f"  Contents ({len(files)} files): {files[:3]}...")
+                # Check if it's a symlink
+                if os.path.islink(dir_path):
+                    logger.info(f"  -> Symlink to: {os.readlink(dir_path)}")
+            else:
+                logger.info(f"Directory {dir_path} does NOT exist")
+                
         model_dirs = [
             "/ComfyUI/models/vae",
             "/ComfyUI/models/unet", 

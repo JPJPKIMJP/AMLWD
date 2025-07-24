@@ -49,7 +49,7 @@
   },
   "37": {
     "inputs": {
-      "unet_name": "REPLACE_WITH_YOUR_FLUX_MODEL.safetensors",
+      "unet_name": "flux1-dev-kontext_fp8_scaled.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
