@@ -1,0 +1,22 @@
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+
+WORKDIR /
+
+RUN apt-get update && apt-get install -y \
+    git \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-sdxl.txt /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt
+
+# Install RunPod SDK
+RUN pip install runpod
+
+# Pre-download SDXL model to avoid startup delays
+ENV MODEL_ID="stabilityai/sdxl-turbo"
+RUN python -c "from diffusers import AutoPipelineForText2Image; import torch; AutoPipelineForText2Image.from_pretrained('${MODEL_ID}', torch_dtype=torch.float16, variant='fp16')"
+
+COPY src/ /src/
+
+CMD ["python", "-u", "/src/handler_sdxl_r2.py"]

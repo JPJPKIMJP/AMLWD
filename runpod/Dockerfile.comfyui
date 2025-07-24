@@ -1,0 +1,49 @@
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+
+WORKDIR /
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    python3-pip \
+    wget \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone ComfyUI
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git /ComfyUI
+
+WORKDIR /ComfyUI
+
+# Install ComfyUI requirements
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional requirements for RunPod
+RUN pip install runpod boto3 requests
+
+# Create directories for models (will be overridden by volume mount)
+RUN mkdir -p models/checkpoints models/loras models/vae models/controlnet models/upscale_models models/embeddings
+
+# Volume mount point - RunPod will mount network volume here
+VOLUME ["/ComfyUI/models"]
+
+# Optional: Download a minimal model if no volume is attached (fallback)
+# This is commented out to save image size - uncomment if you want a fallback
+# RUN wget -O models/checkpoints/sd_v1-5.safetensors \
+#     https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors
+
+# Copy custom nodes (if you have any)
+# COPY custom_nodes/ /ComfyUI/custom_nodes/
+
+# Copy the RunPod handler
+COPY src/comfyui_handler.py /handler.py
+COPY src/workflows/ /workflows/
+
+# Set environment variables
+ENV PYTHONPATH=/ComfyUI:$PYTHONPATH
+ENV COMFYUI_PATH=/ComfyUI
+
+# Run the handler
+CMD ["python", "-u", "/handler.py"]
