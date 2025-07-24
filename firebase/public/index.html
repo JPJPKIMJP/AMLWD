@@ -63,9 +63,9 @@
     </style>
 </head>
 <body>
-    <h1>🔒 Secure AMLWD Image Generator</h1>
+    <h1>🔒 FLUX Image Generator</h1>
     <div style="text-align: center; font-size: 0.8em; color: #666; margin-bottom: 10px;">
-        Version: <span id="version">checking...</span>
+        Version: <span id="version">checking...</span> | Model: FLUX-dev
     </div>
     
     <!-- Authentication Container -->
@@ -106,29 +106,79 @@
             <label>Prompt:</label>
             <textarea id="prompt" rows="3" placeholder="Describe the image you want to generate..."></textarea>
             
+            <!-- FLUX doesn't use negative prompts -->
+            <div style="display:none;">
+                <textarea id="negativePrompt" rows="2"></textarea>
+            </div>
+            
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <label>Width:</label>
-                    <input type="number" id="width" value="512" min="128" max="1024" step="64">
+                    <select id="width">
+                        <option value="512">512</option>
+                        <option value="768">768</option>
+                        <option value="1024" selected>1024</option>
+                    </select>
                 </div>
                 <div>
                     <label>Height:</label>
-                    <input type="number" id="height" value="512" min="128" max="1024" step="64">
+                    <select id="height">
+                        <option value="512">512</option>
+                        <option value="768">768</option>
+                        <option value="1024" selected>1024</option>
+                    </select>
                 </div>
-                <div>
-                    <label>Steps:</label>
-                    <input type="number" id="steps" value="20" min="10" max="50">
+                <!-- FLUX uses fixed steps and guidance -->
+                <div style="display:none;">
+                    <input type="number" id="steps" value="20">
+                    <input type="number" id="guidanceScale" value="3.5">
                 </div>
-                <div>
-                    <label>Guidance Scale:</label>
-                    <input type="number" id="guidanceScale" value="7.5" min="1" max="20" step="0.5">
+                <!-- FLUX only supports 1 image at a time for now -->
+                <div style="display:none;">
+                    <select id="numImages">
+                        <option value="1" selected>1</option>
+                    </select>
+                    <input type="number" id="seed" value="-1">
                 </div>
+            </div>
+            
+            <!-- Hide advanced settings for FLUX -->
+            <div style="display:none;">
+                <select id="sampler"><option value="euler">euler</option></select>
+                <select id="scheduler"><option value="simple">simple</option></select>
+                <input type="number" id="refinerSteps" value="0">
+                <input type="number" id="highNoiseFrac" value="0.8">
+                <textarea id="customJson"></textarea>
             </div>
             
             <button id="generateBtn" onclick="generateImage()">Generate Image</button>
             <button id="resetBtn" onclick="resetRateLimit()" style="display:none; background-color: #ff9800;">Reset My Rate Limit (Admin)</button>
             <div id="status"></div>
+            <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 0.9em;">
+                <strong>✨ FLUX Model Features:</strong><br>
+                • Higher quality than SD 1.5<br>
+                • Best at 1024x1024 resolution<br>
+                • No negative prompts needed<br>
+                • Images stored in R2 cloud storage
+            </div>
+            <div id="timer" style="display:none; font-size: 0.9em; color: #666; margin-top: 5px;">
+                Generation time: <span id="timerCount">0</span>s
+            </div>
             <div id="result"></div>
+        </div>
+        
+        <!-- Image History -->
+        <div style="margin-top: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3>Generation History</h3>
+                <button onclick="clearHistory()" style="background-color: #f44336; font-size: 0.9em; padding: 5px 10px;">Clear History</button>
+            </div>
+            <div id="imageHistory" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-top: 10px;">
+                <!-- History entries will be added here -->
+            </div>
+            <div id="loadMoreContainer" style="text-align: center; margin-top: 20px; display: none;">
+                <button id="loadMoreBtn" onclick="loadMoreImages()" style="background-color: #2196F3;">Load More Images</button>
+            </div>
         </div>
     </div>
 
@@ -152,6 +202,10 @@
         const auth = firebase.auth();
         const functions = firebase.functions();
         
+        // History state
+        let lastImageDoc = null;
+        let hasMoreImages = false;
+        
         // Check version
         fetch('https://us-central1-amlwd-image-gen.cloudfunctions.net/healthCheck')
             .then(r => r.json())
@@ -165,7 +219,7 @@
         // Auth state observer
         auth.onAuthStateChanged((user) => {
             if (user) {
-                // User is signed in
+                // User is signed in - no email verification required
                 document.getElementById('authContainer').style.display = 'none';
                 document.getElementById('generatorContainer').style.display = 'block';
                 document.getElementById('userEmail').textContent = user.email;
@@ -174,6 +228,9 @@
                 if (user.email === 'goooodjp@gmail.com') {
                     document.getElementById('resetBtn').style.display = 'inline-block';
                 }
+                
+                // Load user's image history
+                loadImageHistory();
             } else {
                 // User is signed out
                 document.getElementById('authContainer').style.display = 'block';
@@ -224,8 +281,8 @@
             
             try {
                 await auth.createUserWithEmailAndPassword(email, password);
-                showAuthMessage('Account created successfully!', 'success');
-                showSignIn();
+                showAuthMessage('Account created successfully! You can now use the image generator.', 'success');
+                // User will be automatically signed in
             } catch (error) {
                 showAuthMessage(error.message, 'error');
             }
@@ -251,32 +308,109 @@
             }, 5000);
         }
         
+        // Resend verification email
+        async function resendVerification() {
+            try {
+                const user = auth.currentUser;
+                if (user && !user.emailVerified) {
+                    await user.sendEmailVerification();
+                    showAuthMessage('Verification email sent! Please check your inbox.', 'success');
+                }
+            } catch (error) {
+                showAuthMessage('Error sending verification email: ' + error.message, 'error');
+            }
+        }
+        
+        // Load image history on startup
+        loadImageHistory();
+        
         // Generate Image (Secure)
         async function generateImage() {
             const generateBtn = document.getElementById('generateBtn');
             const statusEl = document.getElementById('status');
             const resultEl = document.getElementById('result');
+            const timerEl = document.getElementById('timer');
+            const timerCountEl = document.getElementById('timerCount');
+            
+            // Check size limits before sending
+            const numImages = parseInt(document.getElementById('numImages').value);
+            const width = parseInt(document.getElementById('width').value);
+            const height = parseInt(document.getElementById('height').value);
+            
+            // Estimate response size and warn
+            if (numImages > 2 && (width > 512 || height > 512)) {
+                if (!confirm(`Generating ${numImages} images at ${width}x${height} may fail due to RunPod's 10MB limit. Continue anyway?`)) {
+                    return;
+                }
+            }
             
             generateBtn.disabled = true;
             statusEl.innerHTML = '<p>Generating image...</p>';
             resultEl.innerHTML = '';
             
+            // Start timer
+            timerEl.style.display = 'block';
+            let startTime = Date.now();
+            let timerInterval = setInterval(() => {
+                let elapsed = Math.floor((Date.now() - startTime) / 1000);
+                timerCountEl.textContent = elapsed;
+            }, 100);
+            
             try {
+                // Check for custom JSON first
+                let params = {};
+                const customJson = document.getElementById('customJson').value.trim();
+                
+                if (customJson) {
+                    try {
+                        params = JSON.parse(customJson);
+                    } catch (e) {
+                        throw new Error('Invalid JSON format');
+                    }
+                } else {
+                    // Build params from UI
+                    params = {
+                        prompt: document.getElementById('prompt').value,
+                        negative_prompt: document.getElementById('negativePrompt').value,
+                        width: parseInt(document.getElementById('width').value),
+                        height: parseInt(document.getElementById('height').value),
+                        steps: parseInt(document.getElementById('steps').value),
+                        guidance_scale: parseFloat(document.getElementById('guidanceScale').value),
+                        num_images: parseInt(document.getElementById('numImages').value),
+                        seed: parseInt(document.getElementById('seed').value),
+                        sampler_name: document.getElementById('sampler').value,
+                        scheduler: document.getElementById('scheduler').value,
+                        refiner_inference_steps: parseInt(document.getElementById('refinerSteps').value),
+                        high_noise_frac: parseFloat(document.getElementById('highNoiseFrac').value)
+                    };
+                }
+                
                 // Call the secure Firebase function
                 const generateImageSecure = functions.httpsCallable('generateImageSecure');
+                const result = await generateImageSecure(params);
                 
-                const result = await generateImageSecure({
-                    prompt: document.getElementById('prompt').value,
-                    width: parseInt(document.getElementById('width').value),
-                    height: parseInt(document.getElementById('height').value),
-                    steps: parseInt(document.getElementById('steps').value),
-                    guidance_scale: parseFloat(document.getElementById('guidanceScale').value)
-                });
+                // Stop timer
+                clearInterval(timerInterval);
+                let finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                timerCountEl.textContent = finalTime;
                 
-                statusEl.innerHTML = '<p class="success">Image generated successfully!</p>';
-                resultEl.innerHTML = `<img src="data:image/png;base64,${result.data.image}" alt="Generated image">`;
+                statusEl.innerHTML = `<p class="success">Image generated successfully in ${finalTime}s!</p>`;
+                
+                // Handle multiple images
+                if (result.data.images && Array.isArray(result.data.images)) {
+                    resultEl.innerHTML = result.data.images.map((img, idx) => 
+                        `<img src="data:image/png;base64,${img}" alt="Generated image ${idx + 1}" style="max-width: 100%; margin: 5px;">`
+                    ).join('');
+                    
+                    // Save to history
+                    result.data.images.forEach(img => saveToHistory(img, params.prompt));
+                } else if (result.data.image) {
+                    resultEl.innerHTML = `<img src="data:image/png;base64,${result.data.image}" alt="Generated image">`;
+                    saveToHistory(result.data.image, params.prompt);
+                }
                 
             } catch (error) {
+                clearInterval(timerInterval);
                 statusEl.innerHTML = `<p class="error">Error: ${error.message}</p>`;
                 
                 if (error.code === 'resource-exhausted') {
@@ -284,6 +418,209 @@
                 }
             } finally {
                 generateBtn.disabled = false;
+            }
+        }
+        
+        // Save to Firebase Storage
+        async function saveToHistory(imageBase64, prompt) {
+            try {
+                // Call Firebase function to save image
+                const saveImageToStorage = functions.httpsCallable('saveImageToStorage');
+                const result = await saveImageToStorage({
+                    imageBase64: imageBase64,
+                    prompt: prompt,
+                    metadata: {
+                        width: document.getElementById('width').value,
+                        height: document.getElementById('height').value,
+                        steps: document.getElementById('steps').value,
+                        guidanceScale: document.getElementById('guidanceScale').value
+                    }
+                });
+                
+                console.log('Image saved to Firebase Storage:', result.data);
+                
+                // Reload history
+                await loadImageHistory();
+                
+            } catch (error) {
+                console.error('Error saving to storage:', error);
+                
+                // If storage not set up, show instructions
+                if (error.message && error.message.includes('bucket does not exist')) {
+                    const statusEl = document.getElementById('status');
+                    statusEl.innerHTML += '<p style="color: orange; margin-top: 10px;">⚠️ Firebase Storage not enabled. Visit <a href="https://console.firebase.google.com/project/amlwd-image-gen/storage" target="_blank">Firebase Console</a> to enable storage.</p>';
+                }
+                
+                // Fall back to local storage for offline/error cases
+                try {
+                    let history = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+                    history.unshift({
+                        prompt: prompt,
+                        timestamp: new Date().toISOString(),
+                        size: Math.round(imageBase64.length * 0.75 / 1024) + 'KB',
+                        localOnly: true
+                    });
+                    history = history.slice(0, 10); // Keep fewer for local storage
+                    localStorage.setItem('imageHistory', JSON.stringify(history));
+                    
+                    // Update history display to show local storage
+                    await loadImageHistory();
+                } catch (e) {
+                    console.error('Local storage error:', e);
+                }
+            }
+        }
+        
+        // Load image history
+        async function loadImageHistory(append = false) {
+            const historyEl = document.getElementById('imageHistory');
+            if (!append) {
+                historyEl.innerHTML = '<p style="color: #999;">Loading history...</p>';
+                lastImageDoc = null;
+            }
+            
+            try {
+                // Load from Firebase
+                const getUserImages = functions.httpsCallable('getUserImages');
+                const params = { limit: 12 };
+                if (lastImageDoc && append) {
+                    params.startAfter = lastImageDoc;
+                }
+                
+                const result = await getUserImages(params);
+                hasMoreImages = result.data.hasMore;
+                
+                if (result.data.images.length > 0) {
+                    lastImageDoc = result.data.images[result.data.images.length - 1].id;
+                    
+                    const imagesHtml = result.data.images.map((item) => `
+                        <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #f9f9f9;">
+                            <img src="${item.imageUrl}" 
+                                 alt="${item.prompt}" 
+                                 style="width: 100%; height: 200px; object-fit: cover; border-radius: 5px; margin-bottom: 10px; cursor: pointer;"
+                                 onclick="viewFullImage('${item.imageUrl}', '${item.prompt.replace(/'/g, "\\'")}')"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div style="display: none; width: 100%; height: 200px; background: #f0f0f0; border-radius: 5px; margin-bottom: 10px; align-items: center; justify-content: center; color: #666;">
+                                <span>Image not available</span>
+                            </div>
+                            <p style="font-size: 0.9em; margin: 5px 0; font-weight: bold;">${item.prompt.substring(0, 50)}...</p>
+                            <p style="font-size: 0.8em; color: #666; margin: 0;">${new Date(item.timestamp).toLocaleString()}</p>
+                            <p style="font-size: 0.8em; color: #888; margin: 0;">Size: ${Math.round(item.size / 1024)}KB</p>
+                            <button onclick="reGenerateImage('${item.prompt.replace(/'/g, "\\'")}')" style="margin-top: 5px; font-size: 0.8em; padding: 5px 10px;">Re-generate</button>
+                        </div>
+                    `).join('');
+                    
+                    if (append) {
+                        historyEl.innerHTML += imagesHtml;
+                    } else {
+                        historyEl.innerHTML = imagesHtml;
+                    }
+                    
+                    // Show/hide load more button
+                    document.getElementById('loadMoreContainer').style.display = hasMoreImages ? 'block' : 'none';
+                } else if (!append) {
+                    // Check local storage fallback
+                    const localHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+                    if (localHistory.length > 0) {
+                        historyEl.innerHTML = '<p style="color: #666; margin-bottom: 10px;">Local history (not saved to cloud):</p>' +
+                            localHistory.map((item) => `
+                                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #ffe;">
+                                    <p style="font-size: 0.9em; margin: 5px 0; font-weight: bold;">${item.prompt.substring(0, 50)}...</p>
+                                    <p style="font-size: 0.8em; color: #666; margin: 0;">${new Date(item.timestamp).toLocaleString()}</p>
+                                    <p style="font-size: 0.8em; color: #888; margin: 0;">Size: ${item.size || 'Unknown'}</p>
+                                </div>
+                            `).join('');
+                    } else {
+                        historyEl.innerHTML = '<p style="color: #999;">No history yet. Generate some images!</p>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                // Fall back to local storage
+                const history = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+                historyEl.innerHTML = history.length > 0 
+                    ? '<p style="color: #f00; margin-bottom: 10px;">Error loading cloud history. Showing local cache:</p>' +
+                      history.map((item) => `
+                        <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #ffe;">
+                            <p style="font-size: 0.9em; margin: 5px 0; font-weight: bold;">${item.prompt.substring(0, 50)}...</p>
+                            <p style="font-size: 0.8em; color: #666; margin: 0;">${new Date(item.timestamp).toLocaleString()}</p>
+                            <p style="font-size: 0.8em; color: #888; margin: 0;">Size: ${item.size || 'Unknown'}</p>
+                        </div>
+                      `).join('')
+                    : '<p style="color: #999;">No history available.</p>';
+            }
+        }
+        
+        // Clear history function
+        async function clearHistory() {
+            if (confirm('This will clear your local cache only. Images stored in the cloud will remain. Continue?')) {
+                localStorage.removeItem('imageHistory');
+                await loadImageHistory();
+            }
+        }
+        
+        // View full image in modal or new tab
+        function viewFullImage(imageUrl, prompt) {
+            // Create a simple modal
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.9);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
+                cursor: pointer;
+            `;
+            
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.style.cssText = 'max-width: 90%; max-height: 90%; object-fit: contain;';
+            img.alt = prompt;
+            
+            const closeBtn = document.createElement('div');
+            closeBtn.textContent = '✕';
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 20px;
+                right: 40px;
+                color: white;
+                font-size: 40px;
+                cursor: pointer;
+            `;
+            
+            modal.appendChild(img);
+            modal.appendChild(closeBtn);
+            
+            modal.onclick = () => document.body.removeChild(modal);
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Re-generate image with same prompt
+        function reGenerateImage(prompt) {
+            document.getElementById('prompt').value = prompt;
+            generateImage();
+        }
+        
+        // Load more images
+        async function loadMoreImages() {
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.textContent = 'Loading...';
+            
+            try {
+                await loadImageHistory(true);
+            } catch (error) {
+                console.error('Error loading more images:', error);
+            } finally {
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.textContent = 'Load More Images';
             }
         }
         

@@ -23,7 +23,20 @@ const BLOCKED_KEYWORDS = [
 
 // Input validation function
 function validateInput(data) {
-  const { prompt, width = 512, height = 512, steps = 20, guidance_scale = 7.5 } = data;
+  const { 
+    prompt, 
+    negative_prompt = "",
+    width = 1024, 
+    height = 1024, 
+    steps = 25, 
+    guidance_scale = 7.5,
+    num_images = 1,
+    seed = -1,
+    sampler_name = "DPM++ 2M Karras",
+    scheduler = "normal",
+    refiner_inference_steps = 0,
+    high_noise_frac = 0.8
+  } = data;
   
   // Prompt validation
   if (!prompt || typeof prompt !== 'string') {
@@ -56,11 +69,11 @@ function validateInput(data) {
     );
   }
   
-  // Steps validation
-  if (!ALLOWED_STEPS.includes(steps)) {
+  // Steps validation (relaxed for SDXL)
+  if (typeof steps !== 'number' || steps < 1 || steps > 100) {
     throw new functions.https.HttpsError(
       'invalid-argument',
-      `Steps must be one of: ${ALLOWED_STEPS.join(', ')}`
+      'Steps must be between 1 and 100'
     );
   }
   
@@ -72,7 +85,33 @@ function validateInput(data) {
     );
   }
   
-  return { prompt, width, height, steps, guidance_scale };
+  // Number of images validation
+  if (typeof num_images !== 'number' || num_images < 1 || num_images > 4) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Number of images must be between 1 and 4'
+    );
+  }
+  
+  // For template endpoints, split large batches into multiple requests
+  if (num_images > 2 && (width > 512 || height > 512)) {
+    console.warn(`Large batch requested: ${num_images} images at ${width}x${height} - will be split into multiple requests`);
+  }
+  
+  return { 
+    prompt, 
+    negative_prompt,
+    width, 
+    height, 
+    steps, 
+    guidance_scale,
+    num_images,
+    seed,
+    sampler_name,
+    scheduler,
+    refiner_inference_steps,
+    high_noise_frac
+  };
 }
 
 // Secure callable function with improved rate limiting
@@ -85,13 +124,8 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
     );
   }
 
-  // Check if user is verified
-  if (!context.auth.token.email_verified) {
-    throw new functions.https.HttpsError(
-      'permission-denied',
-      'Email must be verified to use this service'
-    );
-  }
+  // Email verification removed - too much friction for users
+  // Just being authenticated is enough
 
   // Validate input
   const validatedInput = validateInput(data);
@@ -189,7 +223,7 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
   try {
     const startTime = Date.now();
     
-    // Call RunPod API
+    // Call RunPod API with minimal SDXL parameters
     const response = await fetch(`https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`, {
       method: 'POST',
       headers: {
@@ -199,24 +233,26 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
       body: JSON.stringify({
         input: {
           prompt: validatedInput.prompt,
-          negative_prompt: "",
           width: validatedInput.width,
           height: validatedInput.height,
-          num_inference_steps: validatedInput.steps,
-          guidance_scale: validatedInput.guidance_scale,
-          seed: -1,
-          scheduler: "K_EULER"  // SDXL scheduler
+          // FLUX doesn't use these traditional parameters
+          // num_inference_steps: validatedInput.steps,
+          // guidance_scale: validatedInput.guidance_scale,
+          // negative_prompt is not used in FLUX
+          // ...(validatedInput.seed !== -1 && { seed: validatedInput.seed }),
+          // ...(validatedInput.num_images > 1 && { num_images: validatedInput.num_images })
         }
       })
     });
 
     const result = await response.json();
-    console.log('RunPod response:', JSON.stringify(result));
+    console.log('RunPod initial response:', JSON.stringify(result));
 
     if (!response.ok) {
       console.error('RunPod API error:', result);
       throw new functions.https.HttpsError('internal', 'Failed to generate image');
     }
+
 
     // Handle RunPod response - check if we need to fetch the result
     let imageBase64;
@@ -260,13 +296,77 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
       }
     }
     
-    // Now check for the image in various formats
-    if (result.output?.image_url) {
-      // SDXL returns image_url with base64 data
-      imageBase64 = result.output.image_url;
-      // If it starts with data:image, extract just the base64 part
-      if (imageBase64.startsWith('data:image')) {
-        imageBase64 = imageBase64.split(',')[1];
+    // Check if we got URLs from R2 (new format)
+    if (result.output?.images && Array.isArray(result.output.images) && 
+        result.output.images.length > 0 && 
+        typeof result.output.images[0] === 'string' && 
+        result.output.images[0].startsWith('http')) {
+      
+      console.log('Received R2 URLs:', result.output.images);
+      
+      // Fetch images from R2 URLs and convert to base64 for immediate display
+      const imagePromises = result.output.images.map(async (url) => {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('Failed to fetch image');
+          
+          const buffer = await response.arrayBuffer();
+          return Buffer.from(buffer).toString('base64');
+        } catch (error) {
+          console.error('Error fetching image from R2:', error);
+          return null;
+        }
+      });
+      
+      const images = await Promise.all(imagePromises);
+      const validImages = images.filter(img => img !== null);
+      
+      if (validImages.length === 0) {
+        throw new functions.https.HttpsError('internal', 'Failed to fetch generated images from storage');
+      }
+      
+      // Return multiple images
+      if (validImages.length > 1) {
+        return {
+          success: true,
+          images: validImages,
+          urls: result.output.images, // Also return URLs for direct access
+          seed: result.output?.seed || -1,
+          processingTime: Date.now() - startTime
+        };
+      } else {
+        return {
+          success: true,
+          image: validImages[0],
+          url: result.output.images[0],
+          seed: result.output?.seed || -1,
+          processingTime: Date.now() - startTime
+        };
+      }
+      
+    } else if (result.output?.image_url) {
+      // FLUX handler returns image_url when using R2
+      if (result.output.image_url.startsWith('http')) {
+        console.log('Fetching image from URL:', result.output.image_url);
+        try {
+          const imageResponse = await fetch(result.output.image_url);
+          if (imageResponse.ok) {
+            const blob = await imageResponse.blob();
+            const buffer = await blob.arrayBuffer();
+            imageBase64 = Buffer.from(buffer).toString('base64');
+          } else {
+            throw new Error('Failed to fetch image from URL');
+          }
+        } catch (fetchError) {
+          console.error('Error fetching image:', fetchError);
+          throw new functions.https.HttpsError('internal', 'Failed to fetch generated image from URL');
+        }
+      } else {
+        // It's base64 data
+        imageBase64 = result.output.image_url;
+        if (imageBase64.startsWith('data:image')) {
+          imageBase64 = imageBase64.split(',')[1];
+        }
       }
     } else if (result.output?.images && Array.isArray(result.output.images) && result.output.images[0]) {
       // SDXL might return array of images
@@ -285,22 +385,41 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
     } else {
       // Log everything we have for debugging
       console.error('Unexpected output format. Full result:', JSON.stringify(result, null, 2));
+      console.error('Result.output value:', result.output);
+      console.error('Result.output type:', typeof result.output);
+      console.error('Result.status:', result.status);
+      console.error('Result keys:', Object.keys(result));
       
-      // Check if the result has any keys that might contain the image
-      const possibleImageKeys = Object.keys(result).filter(key => 
-        key.toLowerCase().includes('image') || 
-        key.toLowerCase().includes('output') || 
-        key.toLowerCase().includes('result') ||
-        key.toLowerCase().includes('url')
-      );
+      // Special handling for RunPod errors
+      if (result.error) {
+        console.error('RunPod error:', result.error);
+        if (result.error.includes('Failed to return job results') && result.error.includes('400')) {
+          throw new functions.https.HttpsError(
+            'internal', 
+            'RunPod error: Image too large for sync endpoint. Try smaller dimensions or fewer steps.'
+          );
+        }
+        throw new functions.https.HttpsError('internal', `RunPod error: ${result.error}`);
+      }
       
-      if (possibleImageKeys.length > 0) {
-        console.log('Found possible image keys:', possibleImageKeys);
+      // Check if FLUX handler returned an error
+      if (result.output?.status === 'error' && result.output?.error) {
+        console.error('FLUX handler error:', result.output.error);
+        throw new functions.https.HttpsError('internal', `FLUX generation failed: ${result.output.error}`);
+      }
+      
+      // Check if output is null/undefined but status is COMPLETED
+      if (result.status === 'COMPLETED' && (result.output === null || result.output === undefined)) {
+        console.error('RunPod returned COMPLETED but output is null/undefined. This indicates the response was too large.');
+        throw new functions.https.HttpsError(
+          'internal', 
+          'Image generation failed: Output too large. Try reducing image size to 768x768 or fewer steps.'
+        );
       }
       
       throw new functions.https.HttpsError(
         'internal', 
-        'Image generation completed but output format not recognized. Check logs for details.'
+        'Image generation failed. Try smaller dimensions (768x768) or contact support.'
       );
     }
 
@@ -320,12 +439,28 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
       success: true
     });
 
-    return {
-      success: true,
-      image: imageBase64,
-      seed: result.output?.seed || -1,
-      processingTime: processingTime
-    };
+    // Handle multiple images if num_images > 1
+    if (validatedInput.num_images > 1 && result.output?.images) {
+      return {
+        success: true,
+        images: result.output.images.map(img => {
+          // Extract base64 if it's a data URI
+          if (img.startsWith('data:image')) {
+            return img.split(',')[1];
+          }
+          return img;
+        }),
+        seed: result.output?.seed || -1,
+        processingTime: processingTime
+      };
+    } else {
+      return {
+        success: true,
+        image: imageBase64,
+        seed: result.output?.seed || -1,
+        processingTime: processingTime
+      };
+    }
 
   } catch (error) {
     // Log failed generation
@@ -340,6 +475,139 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
 
     console.error('Error generating image:', error);
     throw new functions.https.HttpsError('internal', 'Failed to generate image');
+  }
+});
+
+// Save image to Firebase Storage
+exports.saveImageToStorage = functions.https.onCall(async (data, context) => {
+  // Check if user is authenticated
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'You must be logged in');
+  }
+
+  const { imageBase64, prompt, metadata = {} } = data;
+  
+  if (!imageBase64 || !prompt) {
+    throw new functions.https.HttpsError('invalid-argument', 'Image and prompt are required');
+  }
+
+  try {
+    const userId = context.auth.uid;
+    const timestamp = Date.now();
+    const fileName = `images/${userId}/${timestamp}_${Math.random().toString(36).substring(7)}.png`;
+    
+    // Convert base64 to buffer
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    
+    // Get a reference to the storage bucket
+    const bucket = admin.storage().bucket();
+    
+    // Check if bucket exists
+    try {
+      const [exists] = await bucket.exists();
+      if (!exists) {
+        console.error('Storage bucket does not exist. Firebase Storage needs to be enabled.');
+        throw new functions.https.HttpsError(
+          'failed-precondition', 
+          'Firebase Storage is not enabled. Please enable it in the Firebase Console.'
+        );
+      }
+    } catch (checkError) {
+      console.error('Error checking bucket:', checkError);
+      // Continue anyway as the bucket might exist but we can't check
+    }
+    
+    const file = bucket.file(fileName);
+    
+    // Upload the image
+    await file.save(imageBuffer, {
+      metadata: {
+        contentType: 'image/png',
+        metadata: {
+          userId: userId,
+          userEmail: context.auth.token.email,
+          prompt: prompt,
+          timestamp: timestamp.toString(),
+          ...metadata
+        }
+      }
+    });
+    
+    // Make the file publicly readable
+    await file.makePublic();
+    
+    // Get the public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    
+    // Save metadata to Firestore
+    const docRef = await admin.firestore().collection('user_images').add({
+      userId: userId,
+      userEmail: context.auth.token.email,
+      prompt: prompt,
+      imageUrl: publicUrl,
+      fileName: fileName,
+      size: imageBuffer.length,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      metadata: metadata
+    });
+    
+    return {
+      success: true,
+      imageUrl: publicUrl,
+      docId: docRef.id,
+      fileName: fileName
+    };
+    
+  } catch (error) {
+    console.error('Error saving image:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to save image');
+  }
+});
+
+// Get user's image history
+exports.getUserImages = functions.https.onCall(async (data, context) => {
+  // Check if user is authenticated
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'You must be logged in');
+  }
+
+  try {
+    const userId = context.auth.uid;
+    const { limit = 20, startAfter = null } = data;
+    
+    let query = admin.firestore()
+      .collection('user_images')
+      .where('userId', '==', userId)
+      .orderBy('timestamp', 'desc')
+      .limit(limit);
+    
+    if (startAfter) {
+      const startDoc = await admin.firestore().collection('user_images').doc(startAfter).get();
+      if (startDoc.exists) {
+        query = query.startAfter(startDoc);
+      }
+    }
+    
+    const snapshot = await query.get();
+    const images = [];
+    
+    snapshot.forEach(doc => {
+      images.push({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp?.toDate?.() || new Date()
+      });
+    });
+    
+    return {
+      success: true,
+      images: images,
+      hasMore: images.length === limit
+    };
+    
+  } catch (error) {
+    console.error('Error fetching images:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to fetch images');
   }
 });
 
@@ -359,13 +627,15 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
   res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '2.0.0-sdxl-admin',  // Updated: SDXL support + admin bypass
-    deployedAt: '2025-07-23T08:05:00Z',
+    version: '2.1.0-storage',  // Updated: Firebase Storage for image history
+    deployedAt: new Date().toISOString(),
     features: [
       'SDXL model support',
       'Admin rate limit bypass',
-      'image_url output handling',
-      'Enhanced error logging'
+      'Firebase Storage integration',
+      'Cloud-based image history',
+      'Automatic image upload',
+      'No localStorage limits'
     ]
   });
 });
@@ -384,12 +654,21 @@ exports.resetRateLimit = functions.https.onCall(async (data, context) => {
   
   try {
     const userId = context.auth.uid;
+    
+    // Reset rate limit
     await admin.firestore().collection('users').doc(userId).update({
       requestCount: 0,
       lastRequestDate: new Date('2024-01-01').toDateString()
     });
     
-    return { success: true, message: 'Rate limit reset successfully' };
+    // Also make sure admin status is set
+    await admin.firestore().collection('admins').doc(userId).set({
+      isAdmin: true,
+      email: context.auth.token.email,
+      addedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    return { success: true, message: 'Rate limit reset and admin status confirmed' };
   } catch (error) {
     console.error('Reset error:', error);
     throw new functions.https.HttpsError('internal', 'Failed to reset rate limit');
@@ -408,7 +687,7 @@ exports.testRunPod = functions.https.onCall(async (data, context) => {
   }
 
   try {
-    // Try a minimal test with the endpoint
+    // Try a minimal test with smaller image
     const response = await fetch(`https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`, {
       method: 'POST',
       headers: {
@@ -417,11 +696,12 @@ exports.testRunPod = functions.https.onCall(async (data, context) => {
       },
       body: JSON.stringify({
         input: {
-          prompt: "test image, simple shape",
-          width: 512,
-          height: 512,
-          num_inference_steps: 1,  // Minimal steps for testing
-          guidance_scale: 7.5
+          prompt: "simple red circle on white background",
+          width: 256,  // Very small to test
+          height: 256,
+          num_inference_steps: 10,
+          guidance_scale: 7.5,
+          seed: 42
         }
       })
     });

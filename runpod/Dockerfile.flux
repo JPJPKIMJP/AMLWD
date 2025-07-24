@@ -26,41 +26,17 @@ RUN pip install runpod boto3 requests
 # Volume mount point - uses your existing volume
 VOLUME ["/workspace"]
 
-# Copy the FLUX handler
+# Copy the FLUX handler and scripts
 COPY src/flux_handler.py /handler.py
 COPY src/workflows/flux_simple.json /workflows/flux_simple.json
+COPY src/workflows/flux_checkpoint.json /workflows/flux_checkpoint.json
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
 # Set environment variables
 ENV PYTHONPATH=/ComfyUI:$PYTHONPATH
 ENV COMFYUI_PATH=/ComfyUI
 ENV PYTHONUNBUFFERED=1
 
-# Create startup script to handle model linking
-RUN echo '#!/bin/bash\n\
-echo "Setting up model directories..."\n\
-# Check where models actually are\n\
-echo "Checking /workspace structure:"\n\
-ls -la /workspace/ || echo "No /workspace"\n\
-ls -la /workspace/ComfyUI/ || echo "No /workspace/ComfyUI"\n\
-ls -la /workspace/ComfyUI/models/ || echo "No /workspace/ComfyUI/models"\n\
-# Try different mount points\n\
-if [ -d "/workspace/ComfyUI/models" ]; then\n\
-    echo "Found models at /workspace/ComfyUI/models"\n\
-    rm -rf /ComfyUI/models\n\
-    ln -s /workspace/ComfyUI/models /ComfyUI/models\n\
-elif [ -d "/runpod-volume/ComfyUI/models" ]; then\n\
-    echo "Found models at /runpod-volume/ComfyUI/models"\n\
-    rm -rf /ComfyUI/models\n\
-    ln -s /runpod-volume/ComfyUI/models /ComfyUI/models\n\
-else\n\
-    echo "WARNING: No models directory found!"\n\
-    echo "Searched: /workspace/ComfyUI/models and /runpod-volume/ComfyUI/models"\n\
-fi\n\
-# List what we have\n\
-echo "ComfyUI models directory contents:"\n\
-ls -la /ComfyUI/models/ || echo "Failed to list /ComfyUI/models"\n\
-# Start the handler\n\
-python3 -u /handler.py' > /start.sh && chmod +x /start.sh
-
 # Run the startup script
-CMD ["/start.sh"]
+CMD ["/bin/bash", "/start.sh"]
