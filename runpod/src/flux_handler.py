@@ -59,7 +59,7 @@ else:
 class FluxHandler:
     def __init__(self):
         self.server_url = "http://localhost:8188"
-        self.workflow_path = "/workflows/flux_simple.json"
+        self.workflow_path = "/workflows/flux_actual.json"
         self.check_models()
         
     def load_workflow(self) -> Dict:

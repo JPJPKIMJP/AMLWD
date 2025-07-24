@@ -16,10 +16,22 @@ if [ -d "/workspace/ComfyUI/models" ]; then
     echo "Found models at /workspace/ComfyUI/models"
     rm -rf /ComfyUI/models
     ln -s /workspace/ComfyUI/models /ComfyUI/models
+    
+    # Create symlinks for text encoders in clip directory if needed
+    if [ -d "/workspace/ComfyUI/models/text_encoders" ] && [ -d "/ComfyUI/models/clip" ]; then
+        echo "Linking text encoders to clip directory..."
+        ln -sf /workspace/ComfyUI/models/text_encoders/*.safetensors /ComfyUI/models/clip/ 2>/dev/null || true
+    fi
 elif [ -d "/runpod-volume/ComfyUI/models" ]; then
     echo "Found models at /runpod-volume/ComfyUI/models"
     rm -rf /ComfyUI/models
     ln -s /runpod-volume/ComfyUI/models /ComfyUI/models
+    
+    # Create symlinks for text encoders in clip directory if needed
+    if [ -d "/runpod-volume/ComfyUI/models/text_encoders" ] && [ -d "/ComfyUI/models/clip" ]; then
+        echo "Linking text encoders to clip directory..."
+        ln -sf /runpod-volume/ComfyUI/models/text_encoders/*.safetensors /ComfyUI/models/clip/ 2>/dev/null || true
+    fi
 else
     echo "WARNING: No models directory found!"
     echo "Searched: /workspace/ComfyUI/models and /runpod-volume/ComfyUI/models"

@@ -1,0 +1,19 @@
+# Run these commands in your RunPod pod:
+
+# 1. Check which mount point exists
+ls -la /workspace/ComfyUI/models/ || ls -la /runpod-volume/ComfyUI/models/
+
+# 2. Find all FLUX-related files
+find /workspace/ComfyUI/models -name "*flux*" -type f 2>/dev/null || find /runpod-volume/ComfyUI/models -name "*flux*" -type f 2>/dev/null
+
+# 3. List checkpoint models
+ls -la /workspace/ComfyUI/models/checkpoints/ 2>/dev/null || ls -la /runpod-volume/ComfyUI/models/checkpoints/ 2>/dev/null
+
+# 4. List UNET models
+ls -la /workspace/ComfyUI/models/unet/ 2>/dev/null || ls -la /runpod-volume/ComfyUI/models/unet/ 2>/dev/null
+
+# 5. List VAE models
+ls -la /workspace/ComfyUI/models/vae/ 2>/dev/null || ls -la /runpod-volume/ComfyUI/models/vae/ 2>/dev/null
+
+# 6. List CLIP models
+ls -la /workspace/ComfyUI/models/clip/ 2>/dev/null || ls -la /runpod-volume/ComfyUI/models/clip/ 2>/dev/null
