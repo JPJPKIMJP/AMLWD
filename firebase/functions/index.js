@@ -115,7 +115,12 @@ function validateInput(data) {
 }
 
 // Secure callable function with improved rate limiting
-exports.generateImageSecure = functions.https.onCall(async (data, context) => {
+exports.generateImageSecure = functions
+  .runWith({
+    timeoutSeconds: 540,  // 9 minutes (max allowed)
+    memory: '2GB'         // Increase memory for better performance
+  })
+  .https.onCall(async (data, context) => {
   // Check if user is authenticated
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -227,12 +232,17 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
     const startTime = Date.now();
     
     // Call RunPod API with minimal SDXL parameters
+    // Use AbortController for custom timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+    
     const response = await fetch(`https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RUNPOD_API_KEY}`,
         'Content-Type': 'application/json',
       },
+      signal: controller.signal,
       body: JSON.stringify({
         input: {
           prompt: validatedInput.prompt,
@@ -248,6 +258,8 @@ exports.generateImageSecure = functions.https.onCall(async (data, context) => {
           // ...(validatedInput.num_images > 1 && { num_images: validatedInput.num_images })
         }
       })
+    }).finally(() => {
+      clearTimeout(timeoutId);
     });
 
     const result = await response.json();

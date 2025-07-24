@@ -76,6 +76,8 @@ class FluxHandler:
     
     def update_prompt(self, workflow: Dict, prompt: str, width: int = 1024, height: int = 1024, image_data: bytes = None) -> Dict:
         """Update workflow with user prompt and dimensions"""
+        import random
+        
         # Find and update prompt node
         for node_id, node in workflow.items():
             # Handle both FLUX and standard CLIP encoding
@@ -91,6 +93,11 @@ class FluxHandler:
             elif node.get("class_type") == "EmptyLatentImage":
                 node["inputs"]["width"] = width
                 node["inputs"]["height"] = height
+            
+            # Update seed with random value if it's 0
+            elif node.get("class_type") == "KSampler":
+                if node["inputs"].get("seed", 0) == 0:
+                    node["inputs"]["seed"] = random.randint(1, 2**32 - 1)
         
         # Handle image input for image-to-image
         if image_data:
