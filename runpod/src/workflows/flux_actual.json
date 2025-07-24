@@ -60,7 +60,7 @@
   "38": {
     "inputs": {
       "clip_name1": "t5xxl_fp16.safetensors",
-      "clip_name2": "t5xxl_fp16.safetensors",
+      "clip_name2": "clip_l.safetensors",
       "type": "flux",
       "device": "default"
     },
