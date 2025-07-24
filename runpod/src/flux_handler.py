@@ -133,14 +133,17 @@ class FluxHandler:
             "/ComfyUI/models/unet", 
             "/ComfyUI/models/checkpoints",
             "/ComfyUI/models/clip",
+            "/ComfyUI/models/diffusion_models",
             "/workspace/ComfyUI/models/vae",
             "/workspace/ComfyUI/models/unet",
             "/workspace/ComfyUI/models/checkpoints",
             "/workspace/ComfyUI/models/clip",
+            "/workspace/ComfyUI/models/diffusion_models",
             "/runpod-volume/ComfyUI/models/vae",
             "/runpod-volume/ComfyUI/models/unet",
             "/runpod-volume/ComfyUI/models/checkpoints",
-            "/runpod-volume/ComfyUI/models/clip"
+            "/runpod-volume/ComfyUI/models/clip",
+            "/runpod-volume/ComfyUI/models/diffusion_models"
         ]
         
         for dir_path in model_dirs:
