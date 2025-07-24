@@ -62,21 +62,19 @@ class FluxHandler:
         self.workflow_path = "/workflows/flux_actual.json"
         self.check_models()
         
-    def load_workflow(self) -> Dict:
+    def load_workflow(self, is_img2img: bool = False) -> Dict:
         """Load the FLUX workflow template"""
-        # Check if we have checkpoint models
-        checkpoint_path = "/ComfyUI/models/checkpoints"
-        if os.path.exists(checkpoint_path) and os.listdir(checkpoint_path):
-            logger.info("Using checkpoint workflow")
-            workflow_file = "/workflows/flux_checkpoint.json"
+        if is_img2img:
+            logger.info("Using image-to-image workflow")
+            workflow_file = "/workflows/flux_img2img.json"
         else:
-            logger.info("Using default FLUX workflow")
-            workflow_file = self.workflow_path
+            logger.info("Using text-to-image workflow")
+            workflow_file = "/workflows/flux_actual.json"
             
         with open(workflow_file, 'r') as f:
             return json.load(f)
     
-    def update_prompt(self, workflow: Dict, prompt: str, width: int = 1024, height: int = 1024) -> Dict:
+    def update_prompt(self, workflow: Dict, prompt: str, width: int = 1024, height: int = 1024, image_data: bytes = None) -> Dict:
         """Update workflow with user prompt and dimensions"""
         # Find and update prompt node
         for node_id, node in workflow.items():
@@ -93,6 +91,30 @@ class FluxHandler:
             elif node.get("class_type") == "EmptyLatentImage":
                 node["inputs"]["width"] = width
                 node["inputs"]["height"] = height
+        
+        # Handle image input for image-to-image
+        if image_data:
+            # Save image temporarily
+            import uuid
+            temp_image = f"/tmp/input_{uuid.uuid4()}.png"
+            with open(temp_image, 'wb') as f:
+                f.write(image_data)
+            
+            # Update LoadImage node if it exists
+            for node_id, node in workflow.items():
+                if node.get("class_type") == "LoadImage":
+                    node["inputs"]["image"] = temp_image
+                    
+                # Switch KSampler to use VAEEncode instead of EmptyLatentImage
+                elif node.get("class_type") == "KSampler":
+                    # Find VAEEncode node
+                    vae_encode_id = None
+                    for nid, n in workflow.items():
+                        if n.get("class_type") == "VAEEncode":
+                            vae_encode_id = nid
+                            break
+                    if vae_encode_id:
+                        node["inputs"]["latent_image"] = [vae_encode_id, 0]
         
         return workflow
     
@@ -200,13 +222,14 @@ handler = FluxHandler()
 
 def runpod_handler(job):
     """
-    Simple FLUX handler
+    FLUX handler supporting both text-to-image and image-to-image
     Input format:
     {
         "input": {
             "prompt": "a beautiful landscape",
             "width": 1024,
-            "height": 1024
+            "height": 1024,
+            "image": "base64_encoded_image"  # optional, for img2img
         }
     }
     """
@@ -216,12 +239,24 @@ def runpod_handler(job):
         width = job_input.get('width', 1024)
         height = job_input.get('height', 1024)
         
+        # Check for image input (base64)
+        image_data = None
+        is_img2img = False
+        if 'image' in job_input and job_input['image']:
+            try:
+                image_data = base64.b64decode(job_input['image'])
+                is_img2img = True
+                logger.info("Image-to-image mode detected")
+            except Exception as e:
+                logger.warning(f"Failed to decode input image: {e}")
+        
+        logger.info(f"Mode: {'img2img' if is_img2img else 'txt2img'}")
         logger.info(f"Generating FLUX image: {prompt}")
         logger.info(f"Dimensions: {width}x{height}")
         
-        # Load and update workflow
-        workflow = handler.load_workflow()
-        workflow = handler.update_prompt(workflow, prompt, width, height)
+        # Load appropriate workflow
+        workflow = handler.load_workflow(is_img2img=is_img2img)
+        workflow = handler.update_prompt(workflow, prompt, width, height, image_data)
         
         # Queue generation
         prompt_id = handler.queue_prompt(workflow)
