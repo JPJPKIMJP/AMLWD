@@ -41,7 +41,7 @@ COPY src/workflows/flux_simple.json /workflows/flux_simple.json
 COPY src/workflows/flux_checkpoint.json /workflows/flux_checkpoint.json
 COPY src/workflows/flux_actual.json /workflows/flux_actual.json
 COPY src/workflows/flux_img2img.json /workflows/flux_img2img.json
-COPY src/workflows/flux_with_lora.json /workflows/flux_with_lora.json
+# flux_with_lora.json will be loaded from volume instead
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
