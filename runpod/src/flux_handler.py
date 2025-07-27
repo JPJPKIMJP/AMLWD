@@ -379,6 +379,18 @@ class FluxHandler:
                 logger.error(f"No prompt_id in response: {result}")
                 raise ValueError(f"Invalid response from ComfyUI: {result}")
             return result['prompt_id']
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP Error {e.response.status_code}: {e.response.text}")
+            # Try to parse error details
+            try:
+                error_data = e.response.json()
+                if 'error' in error_data:
+                    logger.error(f"ComfyUI Error Details: {error_data['error']}")
+                if 'node_errors' in error_data:
+                    logger.error(f"Node Errors: {error_data['node_errors']}")
+            except:
+                pass
+            raise
         except Exception as e:
             logger.error(f"Failed to queue prompt: {str(e)}")
             raise
