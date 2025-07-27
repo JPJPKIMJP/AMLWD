@@ -62,19 +62,49 @@ class FluxHandler:
         self.workflow_path = "/workflows/flux_actual.json"
         self.check_models()
         
-    def load_workflow(self, is_img2img: bool = False) -> Dict:
+    def load_workflow(self, is_img2img: bool = False, lora_name: str = None) -> Dict:
         """Load the FLUX workflow template"""
+        # Try multiple possible paths for workflows
+        workflow_paths = [
+            "/workflows/",
+            "/src/workflows/",
+            "/app/workflows/",
+            "./workflows/",
+            "workflows/"
+        ]
+        
+        # Determine which workflow to use
         if is_img2img:
             logger.info("Using image-to-image workflow")
-            workflow_file = "/workflows/flux_img2img.json"
+            workflow_filename = "flux_img2img.json"
+        elif lora_name:
+            logger.info(f"Using LoRA workflow with: {lora_name}")
+            workflow_filename = "flux_with_lora.json"
         else:
             logger.info("Using text-to-image workflow")
-            workflow_file = "/workflows/flux_actual.json"
+            workflow_filename = "flux_actual.json"
+            
+        # Find the workflow file
+        workflow_file = None
+        for path in workflow_paths:
+            test_path = os.path.join(path, workflow_filename)
+            if os.path.exists(test_path):
+                workflow_file = test_path
+                logger.info(f"Found workflow at: {test_path}")
+                break
+                
+        if not workflow_file:
+            # If no workflow found, try to construct path based on current file location
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            workflow_file = os.path.join(current_dir, "workflows", workflow_filename)
+            if not os.path.exists(workflow_file):
+                logger.error(f"Could not find workflow file: {workflow_filename}")
+                raise FileNotFoundError(f"Workflow file not found: {workflow_filename}")
             
         with open(workflow_file, 'r') as f:
             return json.load(f)
     
-    def update_prompt(self, workflow: Dict, prompt: str, width: int = 1024, height: int = 1024, image_data: bytes = None) -> Dict:
+    def update_prompt(self, workflow: Dict, prompt: str, width: int = 1024, height: int = 1024, image_data: bytes = None, lora_name: str = None, lora_strength: float = 1.0) -> Dict:
         """Update workflow with user prompt and dimensions"""
         import random
         
@@ -122,6 +152,66 @@ class FluxHandler:
                             break
                     if vae_encode_id:
                         node["inputs"]["latent_image"] = [vae_encode_id, 0]
+        
+        # Update LoRA if specified
+        if lora_name:
+            # Ensure lora_name has the .safetensors extension
+            if not lora_name.endswith('.safetensors'):
+                lora_filename = f"{lora_name}.safetensors"
+            else:
+                lora_filename = lora_name
+                
+            # Check various possible locations for the LoRA
+            lora_paths = [
+                f"/ComfyUI/models/loras/{lora_filename}",
+                f"/workspace/ComfyUI/models/loras/{lora_filename}",
+                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
+            ]
+            
+            lora_exists = False
+            for path in lora_paths:
+                if os.path.exists(path):
+                    lora_exists = True
+                    logger.info(f"Found LoRA at: {path}")
+                    break
+                    
+            if not lora_exists:
+                logger.info(f"LoRA {lora_filename} not found locally, checking known LoRAs...")
+                
+                # Known LoRAs mapping
+                known_loras = {
+                    "shiyuanlimei_v1.0": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2F1753410944552_shiyuanlimei_v1.0.safetensors?alt=media&token=c1abf95f-1b20-422b-90fb-66347fe66367",
+                    "mix4": "PLACEHOLDER_URL_FOR_MIX4"  # Need to get the actual URL
+                }
+                
+                if lora_name in known_loras:
+                    logger.info(f"Downloading {lora_name}...")
+                    try:
+                        import urllib.request
+                        # Try to download to the first writable location
+                        for path in lora_paths:
+                            try:
+                                os.makedirs(os.path.dirname(path), exist_ok=True)
+                                urllib.request.urlretrieve(known_loras[lora_name], path)
+                                logger.info(f"Successfully downloaded {lora_name} to {path}")
+                                lora_exists = True
+                                break
+                            except Exception as e:
+                                logger.warning(f"Could not write to {path}: {e}")
+                    except Exception as e:
+                        logger.error(f"Failed to download LoRA: {e}")
+            
+            # Update LoRA nodes with the filename (ComfyUI expects filename with extension)
+            lora_updated = False
+            for node_id, node in workflow.items():
+                if node.get("class_type") in ["LoraLoader", "LoraLoaderModelOnly"]:
+                    node["inputs"]["lora_name"] = lora_filename
+                    node["inputs"]["strength_model"] = lora_strength
+                    logger.info(f"Updated LoRA node {node_id}: {lora_filename} with strength {lora_strength}")
+                    lora_updated = True
+                    
+            if not lora_updated:
+                logger.warning(f"No LoRA nodes found in workflow to update!")
         
         return workflow
     
@@ -300,9 +390,50 @@ def runpod_handler(job):
     """
     try:
         job_input = job['input']
+        
+        # Check for special actions
+        action = job_input.get('action')
+        if action == 'download_lora':
+            # Handle LoRA download
+            lora_url = job_input.get('lora_url')
+            lora_name = job_input.get('lora_name', 'lora.safetensors')
+            
+            if not lora_url:
+                return {"status": "error", "error": "No LoRA URL provided"}
+            
+            logger.info(f"Downloading LoRA: {lora_name} from {lora_url}")
+            
+            # Download to ComfyUI models directory
+            import subprocess
+            lora_path = f"/workspace/ComfyUI/models/loras/{lora_name}"
+            
+            # Use wget to download
+            cmd = ['wget', '-O', lora_path, lora_url]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info(f"LoRA downloaded successfully to {lora_path}")
+                # Check file size
+                import os
+                size = os.path.getsize(lora_path) / (1024 * 1024)  # MB
+                return {
+                    "status": "success",
+                    "message": f"LoRA downloaded successfully",
+                    "path": lora_path,
+                    "size_mb": round(size, 2)
+                }
+            else:
+                logger.error(f"Failed to download LoRA: {result.stderr}")
+                return {"status": "error", "error": f"Download failed: {result.stderr}"}
+        
+        # Normal image generation
         prompt = job_input.get('prompt', 'a beautiful landscape')
         width = job_input.get('width', 1024)
         height = job_input.get('height', 1024)
+        
+        # LoRA parameters
+        lora_name = job_input.get('lora_name', None)
+        lora_strength = job_input.get('lora_strength', 1.0)
         
         # Check for image input (base64)
         image_data = None
@@ -315,13 +446,19 @@ def runpod_handler(job):
             except Exception as e:
                 logger.warning(f"Failed to decode input image: {e}")
         
-        logger.info(f"Mode: {'img2img' if is_img2img else 'txt2img'}")
+        # Log mode info
+        mode_info = []
+        if is_img2img:
+            mode_info.append("img2img")
+        if lora_name:
+            mode_info.append(f"LoRA:{lora_name}")
+        logger.info(f"Mode: {' + '.join(mode_info) if mode_info else 'txt2img'}")
         logger.info(f"Generating FLUX image: {prompt}")
         logger.info(f"Dimensions: {width}x{height}")
         
         # Load appropriate workflow
-        workflow = handler.load_workflow(is_img2img=is_img2img)
-        workflow = handler.update_prompt(workflow, prompt, width, height, image_data)
+        workflow = handler.load_workflow(is_img2img=is_img2img, lora_name=lora_name)
+        workflow = handler.update_prompt(workflow, prompt, width, height, image_data, lora_name, lora_strength)
         
         # Queue generation
         prompt_id = handler.queue_prompt(workflow)

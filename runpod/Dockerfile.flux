@@ -2,8 +2,10 @@ FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 WORKDIR /
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies (ignore NVIDIA repo errors)
+RUN rm -f /etc/apt/sources.list.d/cuda* && \
+    apt-get update || true && \
+    apt-get install -y \
     git \
     python3-pip \
     wget \
@@ -39,6 +41,7 @@ COPY src/workflows/flux_simple.json /workflows/flux_simple.json
 COPY src/workflows/flux_checkpoint.json /workflows/flux_checkpoint.json
 COPY src/workflows/flux_actual.json /workflows/flux_actual.json
 COPY src/workflows/flux_img2img.json /workflows/flux_img2img.json
+# flux_with_lora.json will be loaded from volume instead
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
@@ -47,5 +50,5 @@ ENV PYTHONPATH=/ComfyUI:$PYTHONPATH
 ENV COMFYUI_PATH=/ComfyUI
 ENV PYTHONUNBUFFERED=1
 
-# Run the startup script
-CMD ["/bin/bash", "/start.sh"]
+# Run the startup script - check volume first, fallback to default
+CMD ["/bin/bash", "-c", "if [ -f /workspace/start_volume.sh ]; then /workspace/start_volume.sh; else /start.sh; fi"]
