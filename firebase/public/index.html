@@ -152,6 +152,24 @@
                 </div>
             </div>
             
+            <!-- LoRA Selection -->
+            <div style="margin: 10px 0;">
+                <label><strong>LoRA Style (Optional):</strong></label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="loraSelect" style="flex: 1;">
+                        <option value="none">None</option>
+                        <option value="mix4">Mix4</option>
+                        <option value="shiyuanlimei_v1.0">Shiyuanlimei v1.0</option>
+                    </select>
+                    <input type="range" id="loraStrength" min="0" max="1" step="0.1" value="0.8" style="flex: 1;">
+                    <span id="loraStrengthValue">0.8</span>
+                    <button onclick="showLoraManager()" style="background-color: #2196F3; padding: 5px 10px; font-size: 0.9em;">Manage LoRAs</button>
+                </div>
+                <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.85em;">
+                    ⚠️ Note: Only FLUX-compatible LoRAs will work. SD1.5 LoRAs are not compatible.
+                </div>
+            </div>
+            
             <!-- Hide advanced settings for FLUX -->
             <div style="display:none;">
                 <select id="sampler"><option value="euler">euler</option></select>
@@ -161,7 +179,10 @@
                 <textarea id="customJson"></textarea>
             </div>
             
-            <button id="generateBtn" onclick="generateImage()">Generate Image</button>
+            <button id="generateBtn" onclick="generateImage()" style="position: relative;">
+                <span id="generateBtnText">Generate Image</span>
+                <div id="progressBar" style="position: absolute; bottom: 0; left: 0; height: 3px; background: #4CAF50; width: 0%; transition: width 0.3s;"></div>
+            </button>
             <button id="resetBtn" onclick="resetRateLimit()" style="display:none; background-color: #ff9800;">Reset My Rate Limit (Admin)</button>
             <div id="status"></div>
             <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 0.9em;">
@@ -189,6 +210,39 @@
             </div>
             <div id="loadMoreContainer" style="text-align: center; margin-top: 20px; display: none;">
                 <button id="loadMoreBtn" onclick="loadMoreImages()" style="background-color: #2196F3;">Load More Images</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for LoRA Manager -->
+    <div id="loraModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <h2>LoRA Manager</h2>
+            <button onclick="closeLoraModal()" style="position: absolute; top: 10px; right: 10px; background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer;">✕</button>
+            
+            <div style="margin: 20px 0;">
+                <h3>Installed LoRAs</h3>
+                <div id="loraList" style="margin: 10px 0;">
+                    <!-- LoRA list will be populated here -->
+                </div>
+            </div>
+            
+            <div style="margin: 20px 0; padding-top: 20px; border-top: 1px solid #ddd;">
+                <h3>Add New LoRA</h3>
+                <input type="text" id="newLoraName" placeholder="LoRA Name" style="width: 100%; margin: 5px 0;">
+                <input type="url" id="newLoraUrl" placeholder="LoRA URL (Firebase Storage)" style="width: 100%; margin: 5px 0;">
+                <button onclick="addNewLora()" style="background-color: #4CAF50;">Add LoRA</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Generation Info -->
+    <div id="infoModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <h2>Generation Information</h2>
+            <button onclick="closeInfoModal()" style="position: absolute; top: 10px; right: 10px; background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer;">✕</button>
+            <div id="generationInfo" style="margin-top: 20px;">
+                <!-- Generation info will be displayed here -->
             </div>
         </div>
     </div>
@@ -381,8 +435,19 @@
             }
             
             generateBtn.disabled = true;
+            document.getElementById('generateBtnText').textContent = 'Generating...';
             statusEl.innerHTML = '<p>Generating FLUX image... This may take 2-3 minutes. Please wait...</p><p class="status-detail">The page will update automatically when complete.</p>';
             resultEl.innerHTML = '';
+            
+            // Start progress bar animation
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = '0%';
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 0.5; // Increment by 0.5% every 100ms (takes ~200 seconds to reach 100%)
+                if (progress >= 95) progress = 95; // Cap at 95% until completion
+                progressBar.style.width = progress + '%';
+            }, 100);
             
             // Start timer
             timerEl.style.display = 'block';
@@ -420,6 +485,14 @@
                         high_noise_frac: parseFloat(document.getElementById('highNoiseFrac').value)
                     };
                     
+                    // Add LoRA parameters
+                    const loraSelect = document.getElementById('loraSelect');
+                    const loraStrength = document.getElementById('loraStrength');
+                    if (loraSelect && loraSelect.value !== 'none') {
+                        params.lora_name = loraSelect.value;
+                        params.lora_strength = parseFloat(loraStrength.value);
+                    }
+                    
                     // Add image for image-to-image
                     if (selectedImageBase64) {
                         params.image = selectedImageBase64;
@@ -433,8 +506,10 @@
                 });
                 const result = await generateImageSecure(params);
                 
-                // Stop timer
+                // Stop timer and progress bar
                 clearInterval(timerInterval);
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
                 let finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
                 timerCountEl.textContent = finalTime;
                 
@@ -455,6 +530,8 @@
                 
             } catch (error) {
                 clearInterval(timerInterval);
+                clearInterval(progressInterval);
+                progressBar.style.width = '0%';
                 statusEl.innerHTML = `<p class="error">Error: ${error.message}</p>`;
                 
                 if (error.code === 'resource-exhausted') {
@@ -462,6 +539,10 @@
                 }
             } finally {
                 generateBtn.disabled = false;
+                document.getElementById('generateBtnText').textContent = 'Generate Image';
+                setTimeout(() => {
+                    progressBar.style.width = '0%';
+                }, 1000);
             }
         }
         
@@ -477,7 +558,10 @@
                         width: document.getElementById('width').value,
                         height: document.getElementById('height').value,
                         steps: document.getElementById('steps').value,
-                        guidanceScale: document.getElementById('guidanceScale').value
+                        guidanceScale: document.getElementById('guidanceScale').value,
+                        lora_name: document.getElementById('loraSelect').value,
+                        lora_strength: document.getElementById('loraStrength').value,
+                        createdAt: new Date().toISOString()
                     }
                 });
                 
@@ -548,9 +632,12 @@
                                 <span>Image not available</span>
                             </div>
                             <p style="font-size: 0.9em; margin: 5px 0; font-weight: bold;">${item.prompt.substring(0, 50)}...</p>
-                            <p style="font-size: 0.8em; color: #666; margin: 0;">${new Date(item.timestamp).toLocaleString()}</p>
+                            <p style="font-size: 0.8em; color: #666; margin: 0;">${item.createdAt ? new Date(item.createdAt).toLocaleString() : new Date(item.timestamp).toLocaleString()}</p>
                             <p style="font-size: 0.8em; color: #888; margin: 0;">Size: ${Math.round(item.size / 1024)}KB</p>
-                            <button onclick="reGenerateImage('${item.prompt.replace(/'/g, "\\'")}')" style="margin-top: 5px; font-size: 0.8em; padding: 5px 10px;">Re-generate</button>
+                            <div style="display: flex; gap: 5px; margin-top: 5px;">
+                                <button onclick="reGenerateImage('${item.prompt.replace(/'/g, "\\'")}')" style="font-size: 0.8em; padding: 5px 10px;">Re-generate</button>
+                                <button onclick="showGenerationInfo('${item.id || ''}', '${encodeURIComponent(JSON.stringify(item))}')" style="font-size: 0.8em; padding: 5px 10px; background-color: #2196F3;">Info</button>
+                            </div>
                         </div>
                     `).join('');
                     
@@ -570,7 +657,7 @@
                             localHistory.map((item) => `
                                 <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #ffe;">
                                     <p style="font-size: 0.9em; margin: 5px 0; font-weight: bold;">${item.prompt.substring(0, 50)}...</p>
-                                    <p style="font-size: 0.8em; color: #666; margin: 0;">${new Date(item.timestamp).toLocaleString()}</p>
+                                    <p style="font-size: 0.8em; color: #666; margin: 0;">${item.createdAt ? new Date(item.createdAt).toLocaleString() : new Date(item.timestamp).toLocaleString()}</p>
                                     <p style="font-size: 0.8em; color: #888; margin: 0;">Size: ${item.size || 'Unknown'}</p>
                                 </div>
                             `).join('');
@@ -587,7 +674,7 @@
                       history.map((item) => `
                         <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #ffe;">
                             <p style="font-size: 0.9em; margin: 5px 0; font-weight: bold;">${item.prompt.substring(0, 50)}...</p>
-                            <p style="font-size: 0.8em; color: #666; margin: 0;">${new Date(item.timestamp).toLocaleString()}</p>
+                            <p style="font-size: 0.8em; color: #666; margin: 0;">${item.createdAt ? new Date(item.createdAt).toLocaleString() : new Date(item.timestamp).toLocaleString()}</p>
                             <p style="font-size: 0.8em; color: #888; margin: 0;">Size: ${item.size || 'Unknown'}</p>
                         </div>
                       `).join('')
@@ -696,6 +783,171 @@
             } finally {
                 resetBtn.disabled = false;
             }
+        }
+        
+        // Initialize LoRA strength slider
+        document.addEventListener('DOMContentLoaded', function() {
+            const loraStrengthSlider = document.getElementById('loraStrength');
+            const loraStrengthValue = document.getElementById('loraStrengthValue');
+            if (loraStrengthSlider) {
+                loraStrengthSlider.addEventListener('input', (e) => {
+                    loraStrengthValue.textContent = e.target.value;
+                });
+            }
+        });
+        
+        // LoRA Manager Functions
+        function showLoraManager() {
+            document.getElementById('loraModal').style.display = 'block';
+            loadLoraList();
+        }
+        
+        function closeLoraModal() {
+            document.getElementById('loraModal').style.display = 'none';
+        }
+        
+        function loadLoraList() {
+            const loraList = document.getElementById('loraList');
+            // Get current LoRAs from localStorage (in real app, this would be from Firebase)
+            const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+            
+            const defaultLoras = {
+                'mix4': 'Mix4 (SD1.5 - Not Compatible)',
+                'shiyuanlimei_v1.0': 'Shiyuanlimei v1.0 (SD1.5 - Not Compatible)'
+            };
+            
+            let html = '';
+            
+            // Show default LoRAs
+            for (const [key, name] of Object.entries(defaultLoras)) {
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; background: #fff3cd;">
+                        <span>${name}</span>
+                        <span style="color: #ff6b6b; font-size: 0.9em;">⚠️ Incompatible</span>
+                    </div>
+                `;
+            }
+            
+            // Show custom LoRAs
+            for (const [key, data] of Object.entries(customLoras)) {
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0;">
+                        <span>${data.name}</span>
+                        <button onclick="deleteLora('${key}')" style="background: #f44336; padding: 5px 10px; font-size: 0.8em;">Delete</button>
+                    </div>
+                `;
+            }
+            
+            if (Object.keys(customLoras).length === 0 && Object.keys(defaultLoras).length > 0) {
+                html += '<p style="color: #666; margin-top: 10px;">No FLUX-compatible LoRAs installed yet.</p>';
+            }
+            
+            loraList.innerHTML = html;
+        }
+        
+        function deleteLora(loraKey) {
+            if (confirm('Are you sure you want to delete this LoRA?')) {
+                const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+                delete customLoras[loraKey];
+                localStorage.setItem('customLoras', JSON.stringify(customLoras));
+                
+                // Update the select dropdown
+                updateLoraSelect();
+                loadLoraList();
+                
+                showStatus('LoRA deleted successfully', 'success');
+            }
+        }
+        
+        function addNewLora() {
+            const name = document.getElementById('newLoraName').value.trim();
+            const url = document.getElementById('newLoraUrl').value.trim();
+            
+            if (!name || !url) {
+                alert('Please enter both name and URL');
+                return;
+            }
+            
+            const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+            const key = name.toLowerCase().replace(/\s+/g, '_');
+            
+            customLoras[key] = { name, url };
+            localStorage.setItem('customLoras', JSON.stringify(customLoras));
+            
+            // Clear inputs
+            document.getElementById('newLoraName').value = '';
+            document.getElementById('newLoraUrl').value = '';
+            
+            // Update UI
+            updateLoraSelect();
+            loadLoraList();
+            
+            showStatus('LoRA added successfully', 'success');
+        }
+        
+        function updateLoraSelect() {
+            const select = document.getElementById('loraSelect');
+            const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+            
+            // Clear current options
+            select.innerHTML = '<option value="none">None</option>';
+            
+            // Add default options (marked as incompatible)
+            select.innerHTML += '<option value="mix4">Mix4 (Incompatible)</option>';
+            select.innerHTML += '<option value="shiyuanlimei_v1.0">Shiyuanlimei v1.0 (Incompatible)</option>';
+            
+            // Add custom LoRAs
+            for (const [key, data] of Object.entries(customLoras)) {
+                select.innerHTML += `<option value="${key}">${data.name}</option>`;
+            }
+        }
+        
+        // Generation Info Functions
+        function showGenerationInfo(id, encodedData) {
+            const modal = document.getElementById('infoModal');
+            const infoDiv = document.getElementById('generationInfo');
+            
+            try {
+                const data = JSON.parse(decodeURIComponent(encodedData));
+                
+                let html = '<table style="width: 100%; border-collapse: collapse;">';
+                
+                // Core info
+                html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Prompt:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.prompt || 'N/A'}</td></tr>`;
+                html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Generated:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.createdAt ? new Date(data.createdAt).toLocaleString() : (data.timestamp ? new Date(data.timestamp).toLocaleString() : 'N/A')}</td></tr>`;
+                html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Size:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.width || 1024}x${data.height || 1024}</td></tr>`;
+                
+                // Generation parameters
+                if (data.steps) html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Steps:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.steps}</td></tr>`;
+                if (data.guidance_scale) html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Guidance Scale:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.guidance_scale}</td></tr>`;
+                if (data.seed && data.seed !== -1) html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Seed:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.seed}</td></tr>`;
+                if (data.sampler_name) html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Sampler:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.sampler_name}</td></tr>`;
+                if (data.lora_name && data.lora_name !== 'none') html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>LoRA:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${data.lora_name} (strength: ${data.lora_strength || 0.8})</td></tr>`;
+                
+                // File info
+                if (data.size) html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>File Size:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">${Math.round(data.size / 1024)}KB</td></tr>`;
+                if (data.imageUrl) html += `<tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border-bottom: 1px solid #ddd;">Cloud (R2)</td></tr>`;
+                
+                html += '</table>';
+                
+                infoDiv.innerHTML = html;
+                modal.style.display = 'block';
+            } catch (error) {
+                console.error('Error showing generation info:', error);
+                infoDiv.innerHTML = '<p style="color: red;">Error loading generation information</p>';
+                modal.style.display = 'block';
+            }
+        }
+        
+        function closeInfoModal() {
+            document.getElementById('infoModal').style.display = 'none';
+        }
+        
+        // Helper function to show status messages
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = `<p class="${type}">${message}</p>`;
+            setTimeout(() => statusEl.innerHTML = '', 3000);
         }
     </script>
 </body>
