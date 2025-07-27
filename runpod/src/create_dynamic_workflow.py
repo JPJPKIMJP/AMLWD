@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""
+Script to create a dynamic workflow that bypasses ComfyUI's LoRA validation
+"""
+
+import json
+
+def create_flux_lora_workflow(lora_name="placeholder.safetensors"):
+    """Create a FLUX workflow with LoRA dynamically"""
+    workflow = {
+        "6": {
+            "inputs": {
+                "text": "a beautiful landscape",
+                "clip": ["40", 1]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+                "title": "CLIP Text Encode (Positive Prompt)"
+            }
+        },
+        "8": {
+            "inputs": {
+                "samples": ["31", 0],
+                "vae": ["39", 0]
+            },
+            "class_type": "VAEDecode",
+            "_meta": {
+                "title": "VAE Decode"
+            }
+        },
+        "31": {
+            "inputs": {
+                "seed": 0,
+                "steps": 20,
+                "cfg": 1,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 1,
+                "model": ["40", 0],
+                "positive": ["35", 0],
+                "negative": ["135", 0],
+                "latent_image": ["124", 0]
+            },
+            "class_type": "KSampler",
+            "_meta": {
+                "title": "KSampler"
+            }
+        },
+        "35": {
+            "inputs": {
+                "guidance": 2.5,
+                "conditioning": ["6", 0]
+            },
+            "class_type": "FluxGuidance",
+            "_meta": {
+                "title": "FLUX Guidance"
+            }
+        },
+        "37": {
+            "inputs": {
+                "unet_name": "flux1-dev-kontext_fp8_scaled.safetensors",
+                "weight_dtype": "default"
+            },
+            "class_type": "UNETLoader",
+            "_meta": {
+                "title": "Load Diffusion Model"
+            }
+        },
+        "38": {
+            "inputs": {
+                "clip_name1": "t5xxl_fp16.safetensors",
+                "clip_name2": "clip_l.safetensors",
+                "type": "flux",
+                "device": "default"
+            },
+            "class_type": "DualCLIPLoader",
+            "_meta": {
+                "title": "Dual CLIP Load"
+            }
+        },
+        "39": {
+            "inputs": {
+                "vae_name": "ae.safetensors"
+            },
+            "class_type": "VAELoader",
+            "_meta": {
+                "title": "VAE Load"
+            }
+        },
+        "40": {
+            "inputs": {
+                "lora_name": lora_name,
+                "strength_model": 0.8,
+                "strength_clip": 0.8,
+                "model": ["37", 0],
+                "clip": ["38", 0]
+            },
+            "class_type": "LoraLoader",
+            "_meta": {
+                "title": "LoRA Loader"
+            }
+        },
+        "124": {
+            "inputs": {
+                "width": 1024,
+                "height": 1024,
+                "batch_size": 1
+            },
+            "class_type": "EmptyLatentImage",
+            "_meta": {
+                "title": "Empty Latent Image"
+            }
+        },
+        "135": {
+            "inputs": {
+                "conditioning": ["6", 0]
+            },
+            "class_type": "ConditioningZeroOut",
+            "_meta": {
+                "title": "Conditioning Zero Out"
+            }
+        },
+        "136": {
+            "inputs": {
+                "filename_prefix": "ComfyUI_LoRA",
+                "images": ["8", 0]
+            },
+            "class_type": "SaveImage",
+            "_meta": {
+                "title": "Save Image"
+            }
+        }
+    }
+    
+    return workflow
+
+if __name__ == "__main__":
+    # Test creating workflow
+    workflow = create_flux_lora_workflow("test_lora.safetensors")
+    print(json.dumps(workflow, indent=2))

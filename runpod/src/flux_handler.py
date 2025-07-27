@@ -66,8 +66,118 @@ class FluxHandler:
         self.workflow_path = "/workflows/flux_actual.json"
         self.check_models()
         
+    def create_dynamic_lora_workflow(self, lora_name: str) -> Dict:
+        """Create a FLUX workflow with LoRA dynamically to bypass validation"""
+        return {
+            "6": {
+                "inputs": {
+                    "text": "a beautiful landscape",
+                    "clip": ["40", 1]
+                },
+                "class_type": "CLIPTextEncode",
+                "_meta": {"title": "CLIP Text Encode (Positive Prompt)"}
+            },
+            "8": {
+                "inputs": {
+                    "samples": ["31", 0],
+                    "vae": ["39", 0]
+                },
+                "class_type": "VAEDecode",
+                "_meta": {"title": "VAE Decode"}
+            },
+            "31": {
+                "inputs": {
+                    "seed": 0,
+                    "steps": 20,
+                    "cfg": 1,
+                    "sampler_name": "euler",
+                    "scheduler": "simple",
+                    "denoise": 1,
+                    "model": ["40", 0],
+                    "positive": ["35", 0],
+                    "negative": ["135", 0],
+                    "latent_image": ["124", 0]
+                },
+                "class_type": "KSampler",
+                "_meta": {"title": "KSampler"}
+            },
+            "35": {
+                "inputs": {
+                    "guidance": 2.5,
+                    "conditioning": ["6", 0]
+                },
+                "class_type": "FluxGuidance",
+                "_meta": {"title": "FLUX Guidance"}
+            },
+            "37": {
+                "inputs": {
+                    "unet_name": "flux1-dev-kontext_fp8_scaled.safetensors",
+                    "weight_dtype": "default"
+                },
+                "class_type": "UNETLoader",
+                "_meta": {"title": "Load Diffusion Model"}
+            },
+            "38": {
+                "inputs": {
+                    "clip_name1": "t5xxl_fp16.safetensors",
+                    "clip_name2": "clip_l.safetensors",
+                    "type": "flux",
+                    "device": "default"
+                },
+                "class_type": "DualCLIPLoader",
+                "_meta": {"title": "Dual CLIP Load"}
+            },
+            "39": {
+                "inputs": {
+                    "vae_name": "ae.safetensors"
+                },
+                "class_type": "VAELoader",
+                "_meta": {"title": "VAE Load"}
+            },
+            "40": {
+                "inputs": {
+                    "lora_name": lora_name,
+                    "strength_model": 0.8,
+                    "strength_clip": 0.8,
+                    "model": ["37", 0],
+                    "clip": ["38", 0]
+                },
+                "class_type": "LoraLoader",
+                "_meta": {"title": "LoRA Loader"}
+            },
+            "124": {
+                "inputs": {
+                    "width": 1024,
+                    "height": 1024,
+                    "batch_size": 1
+                },
+                "class_type": "EmptyLatentImage",
+                "_meta": {"title": "Empty Latent Image"}
+            },
+            "135": {
+                "inputs": {
+                    "conditioning": ["6", 0]
+                },
+                "class_type": "ConditioningZeroOut",
+                "_meta": {"title": "Conditioning Zero Out"}
+            },
+            "136": {
+                "inputs": {
+                    "filename_prefix": "ComfyUI_LoRA",
+                    "images": ["8", 0]
+                },
+                "class_type": "SaveImage",
+                "_meta": {"title": "Save Image"}
+            }
+        }
+
     def load_workflow(self, is_img2img: bool = False, lora_name: str = None) -> Dict:
         """Load the FLUX workflow template"""
+        # If LoRA is requested, create workflow dynamically to bypass validation
+        if lora_name:
+            logger.info(f"Creating dynamic LoRA workflow for: {lora_name}")
+            return self.create_dynamic_lora_workflow(lora_name)
+            
         # Try multiple possible paths for workflows
         workflow_paths = [
             "/workflows/",
@@ -81,9 +191,6 @@ class FluxHandler:
         if is_img2img:
             logger.info("Using image-to-image workflow")
             workflow_filename = "flux_img2img.json"
-        elif lora_name:
-            logger.info(f"Using LoRA workflow with: {lora_name}")
-            workflow_filename = "flux_with_lora.json"
         else:
             logger.info("Using text-to-image workflow")
             workflow_filename = "flux_actual.json"
@@ -523,8 +630,10 @@ def runpod_handler(job):
                 lora_name = None
         
         # Load appropriate workflow
-        workflow = handler.load_workflow(is_img2img=is_img2img, lora_name=lora_name if use_lora else None)
-        workflow = handler.update_prompt(workflow, prompt, width, height, image_data, lora_name if use_lora else None, lora_strength)
+        # Pass the full filename with extension for dynamic workflow creation
+        lora_for_workflow = lora_filename if use_lora else None
+        workflow = handler.load_workflow(is_img2img=is_img2img, lora_name=lora_for_workflow)
+        workflow = handler.update_prompt(workflow, prompt, width, height, image_data, lora_for_workflow, lora_strength)
         
         # Queue generation
         prompt_id = handler.queue_prompt(workflow)
