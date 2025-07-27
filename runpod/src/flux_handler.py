@@ -58,7 +58,7 @@ if os.environ.get('R2_ENDPOINT'):
     )
     logger.info(f"R2 client configured for bucket: {os.environ.get('R2_BUCKET')}")
 else:
-    logger.warning("R2 not configured - will return base64")
+    logger.warn("R2 not configured - will return base64")
 
 class FluxHandler:
     def __init__(self):
@@ -275,7 +275,7 @@ class FluxHandler:
                         logger.info(f"Updated LoRA strength in node {node_id} to {lora_strength}")
                     else:
                         # This shouldn't happen with dynamic workflows, but keep as fallback
-                        logger.warning("LoRA node found but name not set in dynamic workflow")
+                        logger.warn("LoRA node found but name not set in dynamic workflow")
         
         return workflow
     
@@ -567,14 +567,14 @@ def runpod_handler(job):
                         # Check if this is a FLUX-compatible LoRA
                         # SD1.5 LoRAs are typically much smaller than FLUX LoRAs
                         if file_size < 200:  # Less than 200MB is likely SD1.5
-                            logger.warning(f"LoRA file size ({file_size:.1f} MB) suggests SD1.5 LoRA, not FLUX-compatible")
-                            logger.warning("This LoRA may not work properly with FLUX")
+                            logger.warn(f"LoRA file size ({file_size:.1f} MB) suggests SD1.5 LoRA, not FLUX-compatible")
+                            logger.warn("This LoRA may not work properly with FLUX")
                             # Continue anyway but warn user
                         
                         download_success = True
                         break
                     except Exception as e:
-                        logger.warning(f"Could not download to {path}: {e}")
+                        logger.warn(f"Could not download to {path}: {e}")
                         # Clean up failed download
                         if os.path.exists(path):
                             os.remove(path)
@@ -595,7 +595,7 @@ def runpod_handler(job):
                 is_img2img = True
                 logger.info("Image-to-image mode detected")
             except Exception as e:
-                logger.warning(f"Failed to decode input image: {e}")
+                logger.warn(f"Failed to decode input image: {e}")
         
         # Log mode info
         mode_info = []
@@ -629,7 +629,7 @@ def runpod_handler(job):
                         break
             
             if not use_lora:
-                logger.warning(f"LoRA {lora_filename} not found or invalid, using standard workflow")
+                logger.warn(f"LoRA {lora_filename} not found or invalid, using standard workflow")
                 lora_name = None
         
         # Load appropriate workflow
