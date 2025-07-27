@@ -250,6 +250,11 @@ exports.generateImageSecure = functions
           height: validatedInput.height,
           // Add image for img2img if provided
           ...(inputImageBase64 && { image: inputImageBase64 }),
+          // Add LoRA parameters if provided
+          ...(data.lora_name && data.lora_name !== 'none' && { 
+            lora_name: data.lora_name,
+            lora_strength: data.lora_strength || 0.8
+          }),
           // FLUX doesn't use these traditional parameters
           // num_inference_steps: validatedInput.steps,
           // guidance_scale: validatedInput.guidance_scale,
@@ -490,6 +495,8 @@ exports.generateImageSecure = functions
       height: validatedInput.height,
       steps: validatedInput.steps,
       guidanceScale: validatedInput.guidance_scale,
+      loraName: data.lora_name || null,
+      loraStrength: data.lora_strength || null,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       processingTime: processingTime,
       success: true
