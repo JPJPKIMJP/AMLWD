@@ -2,7 +2,7 @@
   "6": {
     "inputs": {
       "text": "a beautiful landscape",
-      "clip": ["40", 1]
+      "clip": ["38", 0]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -80,15 +80,13 @@
   },
   "40": {
     "inputs": {
-      "lora_name": "none",
+      "lora_name": "placeholder.safetensors",
       "strength_model": 0.8,
-      "strength_clip": 0.8,
-      "model": ["37", 0],
-      "clip": ["38", 0]
+      "model": ["37", 0]
     },
-    "class_type": "LoraLoader",
+    "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "LoRA Loader"
+      "title": "LoRA Loader (Model Only)"
     }
   },
   "124": {
