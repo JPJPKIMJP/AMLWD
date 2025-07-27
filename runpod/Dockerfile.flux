@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir runpod boto3 requests
 
 # Install image processing packages that FLUX needs
-# Force rebuild: 2025-07-24 - Fixed numpy availability issue
+# Force rebuild: 2025-07-27 - Added complete LoRA support
 RUN pip install --no-cache-dir --force-reinstall numpy==1.24.3 pillow scipy
 
 # Volume mount point - uses your existing volume

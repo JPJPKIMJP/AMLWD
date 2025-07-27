@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMLWD - AI Image Generator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>AMLWD - AI Image Generator</h1>
+        
+        <div class="input-section">
+            <label for="prompt">Enter your prompt:</label>
+            <textarea id="prompt" placeholder="Describe the image you want to generate..." rows="4"></textarea>
+            
+            <div class="parameters">
+                <div class="param-group">
+                    <label for="width">Width: <span id="widthValue">512</span></label>
+                    <input type="range" id="width" min="512" max="1024" step="64" value="512">
+                </div>
+                
+                <div class="param-group">
+                    <label for="height">Height: <span id="heightValue">512</span></label>
+                    <input type="range" id="height" min="512" max="1024" step="64" value="512">
+                </div>
+                
+                <div class="param-group">
+                    <label for="steps">Steps: <span id="stepsValue">20</span></label>
+                    <input type="range" id="steps" min="1" max="100" value="20">
+                </div>
+                
+                <div class="param-group">
+                    <label for="guidance">Guidance Scale: <span id="guidanceValue">7.5</span></label>
+                    <input type="range" id="guidance" min="1" max="20" step="0.5" value="7.5">
+                </div>
+            </div>
+            
+            <button id="generateBtn">Generate Image</button>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div id="result" class="result">
+            <img id="generatedImage" alt="Generated image">
+            <div class="actions">
+                <button id="downloadBtn" style="display: none;">Download Image</button>
+                <button id="copyPromptBtn" style="display: none;">Copy Prompt</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
