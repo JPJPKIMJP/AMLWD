@@ -14,6 +14,10 @@ import base64
 from typing import Dict, Any
 import subprocess
 import threading
+import urllib.request
+import random
+import uuid
+import traceback
 
 # Initialize RunPod logger
 logger = RunPodLogger()
@@ -106,7 +110,6 @@ class FluxHandler:
     
     def update_prompt(self, workflow: Dict, prompt: str, width: int = 1024, height: int = 1024, image_data: bytes = None, lora_name: str = None, lora_strength: float = 1.0) -> Dict:
         """Update workflow with user prompt and dimensions"""
-        import random
         
         # Find and update prompt node
         for node_id, node in workflow.items():
@@ -132,7 +135,6 @@ class FluxHandler:
         # Handle image input for image-to-image
         if image_data:
             # Save image temporarily
-            import uuid
             temp_image = f"/tmp/input_{uuid.uuid4()}.png"
             with open(temp_image, 'wb') as f:
                 f.write(image_data)
@@ -380,7 +382,6 @@ def runpod_handler(job):
             logger.info(f"Downloading LoRA: {lora_name} from {lora_url}")
             
             # Download to ComfyUI models directory
-            import subprocess
             lora_path = f"/workspace/ComfyUI/models/loras/{lora_name}"
             
             # Use wget to download
@@ -446,7 +447,6 @@ def runpod_handler(job):
                         os.makedirs(os.path.dirname(path), exist_ok=True)
                         
                         # Download using urllib
-                        import urllib.request
                         urllib.request.urlretrieve(lora_url, path)
                         
                         # Verify file size
@@ -518,7 +518,6 @@ def runpod_handler(job):
     except Exception as e:
         logger.error(f"Handler error: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return {
             "status": "error",
