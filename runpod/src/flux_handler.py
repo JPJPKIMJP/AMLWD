@@ -181,7 +181,7 @@ class FluxHandler:
                 # Known LoRAs mapping
                 known_loras = {
                     "shiyuanlimei_v1.0": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2F1753410944552_shiyuanlimei_v1.0.safetensors?alt=media&token=c1abf95f-1b20-422b-90fb-66347fe66367",
-                    "mix4": "PLACEHOLDER_URL_FOR_MIX4"  # Need to get the actual URL
+                    "mix4": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2F1753591512468_mix4.safetensors?alt=media&token=d2c720b3-4aef-4ac4-8651-4a93b936fbeb"
                 }
                 
                 if lora_name in known_loras:
