@@ -239,11 +239,11 @@ exports.generateImageSecure = functions
       // Add image for img2img if provided
       ...(inputImageBase64 && { image: inputImageBase64 }),
       // Add LoRA parameters if provided
-      // TEMPORARILY DISABLED: Custom LoRA URLs need RunPod handler update
-      // For now, skip LoRA if it has a custom URL
-      ...(data.lora_name && data.lora_name !== 'none' && !data.lora_url && { 
+      ...(data.lora_name && data.lora_name !== 'none' && { 
         lora_name: data.lora_name,
-        lora_strength: data.lora_strength || 0.8
+        lora_strength: data.lora_strength || 0.8,
+        // If custom LoRA URL is provided, include it
+        ...(data.lora_url && { lora_url: data.lora_url })
       }),
       // FLUX doesn't use these traditional parameters
       // num_inference_steps: validatedInput.steps,
@@ -253,9 +253,9 @@ exports.generateImageSecure = functions
       // ...(validatedInput.num_images > 1 && { num_images: validatedInput.num_images })
     };
     
-    // Log warning if custom LoRA is requested
+    // Log if custom LoRA is being used
     if (data.lora_url) {
-      console.log('Warning: Custom LoRA URLs not yet supported by RunPod handler. Generating without LoRA.');
+      console.log('Using custom LoRA from URL:', data.lora_url);
     }
     
     console.log('Sending to RunPod:', JSON.stringify(requestPayload));

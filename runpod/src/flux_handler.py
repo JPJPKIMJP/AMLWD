@@ -176,30 +176,7 @@ class FluxHandler:
                     break
                     
             if not lora_exists:
-                logger.info(f"LoRA {lora_filename} not found locally, checking known LoRAs...")
-                
-                # Known LoRAs mapping
-                known_loras = {
-                    "shiyuanlimei_v1.0": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2F1753410944552_shiyuanlimei_v1.0.safetensors?alt=media&token=c1abf95f-1b20-422b-90fb-66347fe66367",
-                    "mix4": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2F1753591512468_mix4.safetensors?alt=media&token=d2c720b3-4aef-4ac4-8651-4a93b936fbeb"
-                }
-                
-                if lora_name in known_loras:
-                    logger.info(f"Downloading {lora_name}...")
-                    try:
-                        import urllib.request
-                        # Try to download to the first writable location
-                        for path in lora_paths:
-                            try:
-                                os.makedirs(os.path.dirname(path), exist_ok=True)
-                                urllib.request.urlretrieve(known_loras[lora_name], path)
-                                logger.info(f"Successfully downloaded {lora_name} to {path}")
-                                lora_exists = True
-                                break
-                            except Exception as e:
-                                logger.warning(f"Could not write to {path}: {e}")
-                    except Exception as e:
-                        logger.error(f"Failed to download LoRA: {e}")
+                logger.info(f"LoRA {lora_filename} not found locally, will need to download...")
             
             # Update LoRA nodes with the filename (ComfyUI expects filename with extension)
             lora_updated = False
@@ -434,6 +411,63 @@ def runpod_handler(job):
         # LoRA parameters
         lora_name = job_input.get('lora_name', None)
         lora_strength = job_input.get('lora_strength', 1.0)
+        lora_url = job_input.get('lora_url', None)
+        
+        # Handle custom LoRA download if URL provided
+        if lora_url and lora_name:
+            logger.info(f"Custom LoRA URL provided: {lora_url}")
+            
+            # Ensure proper filename
+            if not lora_name.endswith('.safetensors'):
+                lora_filename = f"{lora_name}.safetensors"
+            else:
+                lora_filename = lora_name
+            
+            # Try to download the LoRA
+            lora_paths = [
+                f"/workspace/ComfyUI/models/loras/{lora_filename}",
+                f"/ComfyUI/models/loras/{lora_filename}",
+                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
+            ]
+            
+            # Check if already exists
+            lora_exists = False
+            for path in lora_paths:
+                if os.path.exists(path):
+                    logger.info(f"LoRA already exists at: {path}")
+                    lora_exists = True
+                    break
+            
+            if not lora_exists:
+                logger.info(f"Downloading custom LoRA: {lora_filename}")
+                download_success = False
+                
+                for path in lora_paths:
+                    try:
+                        # Create directory if needed
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        
+                        # Download using urllib
+                        import urllib.request
+                        urllib.request.urlretrieve(lora_url, path)
+                        
+                        # Verify file size
+                        file_size = os.path.getsize(path) / (1024 * 1024)  # MB
+                        logger.info(f"Successfully downloaded {lora_filename} to {path} ({file_size:.1f} MB)")
+                        download_success = True
+                        break
+                    except Exception as e:
+                        logger.warning(f"Could not download to {path}: {e}")
+                        # Clean up failed download
+                        if os.path.exists(path):
+                            os.remove(path)
+                
+                if not download_success:
+                    logger.error(f"Failed to download LoRA from {lora_url}")
+                    return {
+                        "status": "error",
+                        "error": "Failed to download custom LoRA file"
+                    }
         
         # Check for image input (base64)
         image_data = None

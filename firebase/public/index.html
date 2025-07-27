@@ -858,13 +858,17 @@
                     const warningEl = document.getElementById('loraWarning');
                     
                     if (this.value !== 'none' && customLoras[this.value]) {
-                        warningEl.innerHTML = '⚠️ <strong>Custom LoRA selected:</strong> Currently, custom uploaded LoRAs are not applied due to RunPod limitations. Image will be generated without LoRA style.';
-                        warningEl.style.background = '#ffebee';
-                        warningEl.style.borderColor = '#ffcdd2';
-                    } else {
+                        warningEl.innerHTML = '✅ <strong>Custom LoRA selected:</strong> Your uploaded LoRA will be applied to the generated image.';
+                        warningEl.style.background = '#e8f5e9';
+                        warningEl.style.borderColor = '#c8e6c9';
+                    } else if (this.value !== 'none') {
                         warningEl.innerHTML = '⚠️ Note: Only FLUX-compatible LoRAs will work. SD1.5 LoRAs are not compatible.';
                         warningEl.style.background = '#fff3cd';
                         warningEl.style.borderColor = '#ffeaa7';
+                    } else {
+                        warningEl.innerHTML = '💡 Tip: Upload your own FLUX-compatible LoRA files to apply custom styles to your images.';
+                        warningEl.style.background = '#e3f2fd';
+                        warningEl.style.borderColor = '#bbdefb';
                     }
                 });
             }
