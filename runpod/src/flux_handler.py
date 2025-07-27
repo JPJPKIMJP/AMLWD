@@ -553,6 +553,14 @@ def runpod_handler(job):
                         # Verify file size
                         file_size = os.path.getsize(path) / (1024 * 1024)  # MB
                         logger.info(f"Successfully downloaded {lora_filename} to {path} ({file_size:.1f} MB)")
+                        
+                        # Check if this is a FLUX-compatible LoRA
+                        # SD1.5 LoRAs are typically much smaller than FLUX LoRAs
+                        if file_size < 200:  # Less than 200MB is likely SD1.5
+                            logger.warning(f"LoRA file size ({file_size:.1f} MB) suggests SD1.5 LoRA, not FLUX-compatible")
+                            logger.warning("This LoRA may not work properly with FLUX")
+                            # Continue anyway but warn user
+                        
                         download_success = True
                         break
                     except Exception as e:
@@ -567,28 +575,6 @@ def runpod_handler(job):
                     logger.info("Falling back to standard workflow without LoRA")
                     lora_name = None
             
-            # WORKAROUND: ComfyUI has a hardcoded whitelist. Use symlink with allowed name
-            if lora_name and download_success:
-                allowed_lora = "mix4.safetensors"  # Use an allowed name
-                allowed_path = f"/workspace/ComfyUI/models/loras/{allowed_lora}"
-                
-                # Remove old symlink/file if exists
-                if os.path.exists(allowed_path) or os.path.islink(allowed_path):
-                    try:
-                        os.remove(allowed_path)
-                    except:
-                        pass
-                
-                # Create symlink with allowed name pointing to actual LoRA
-                try:
-                    actual_path = f"/workspace/ComfyUI/models/loras/{lora_filename}"
-                    if os.path.exists(actual_path):
-                        os.symlink(actual_path, allowed_path)
-                        logger.info(f"Created symlink: {allowed_lora} -> {lora_filename}")
-                        # Use the allowed name in workflow
-                        lora_name = allowed_lora.replace('.safetensors', '')
-                except Exception as e:
-                    logger.warning(f"Could not create symlink: {e}")
         
         # Check for image input (base64)
         image_data = None
@@ -616,38 +602,25 @@ def runpod_handler(job):
         workflow_lora_name = None
         
         if lora_name:
-            # Check for the allowed LoRA name (our symlink)
-            allowed_lora = "mix4.safetensors"
-            allowed_path = f"/workspace/ComfyUI/models/loras/{allowed_lora}"
+            lora_filename = f"{lora_name}.safetensors" if not lora_name.endswith('.safetensors') else lora_name
+            lora_paths = [
+                f"/ComfyUI/models/loras/{lora_filename}",
+                f"/workspace/ComfyUI/models/loras/{lora_filename}",
+                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
+            ]
             
-            if os.path.exists(allowed_path):
-                file_size = os.path.getsize(allowed_path) / (1024 * 1024)  # MB
-                if file_size > 0.1:  # Valid LoRA file
-                    use_lora = True
-                    workflow_lora_name = allowed_lora  # Use the allowed name
-                    logger.info(f"Using allowed LoRA name: {allowed_lora} ({file_size:.1f} MB)")
+            for path in lora_paths:
+                if os.path.exists(path):
+                    file_size = os.path.getsize(path) / (1024 * 1024)  # MB
+                    if file_size > 0.1:  # Valid LoRA file
+                        use_lora = True
+                        workflow_lora_name = lora_filename
+                        logger.info(f"Valid LoRA found at {path} ({file_size:.1f} MB)")
+                        break
             
             if not use_lora:
-                # Fallback: check original name
-                lora_filename = f"{lora_name}.safetensors" if not lora_name.endswith('.safetensors') else lora_name
-                lora_paths = [
-                    f"/ComfyUI/models/loras/{lora_filename}",
-                    f"/workspace/ComfyUI/models/loras/{lora_filename}",
-                    f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
-                ]
-                
-                for path in lora_paths:
-                    if os.path.exists(path):
-                        file_size = os.path.getsize(path) / (1024 * 1024)  # MB
-                        if file_size > 0.1:  # Valid LoRA file
-                            use_lora = True
-                            workflow_lora_name = lora_filename
-                            logger.info(f"Valid LoRA found at {path} ({file_size:.1f} MB)")
-                            break
-                
-                if not use_lora:
-                    logger.warning(f"LoRA {lora_filename} not found or invalid, using standard workflow")
-                    lora_name = None
+                logger.warning(f"LoRA {lora_filename} not found or invalid, using standard workflow")
+                lora_name = None
         
         # Load appropriate workflow
         workflow = handler.load_workflow(is_img2img=is_img2img, lora_name=workflow_lora_name if use_lora else None)
