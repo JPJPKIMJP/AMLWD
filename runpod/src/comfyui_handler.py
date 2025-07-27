@@ -77,7 +77,7 @@ class ComfyUIHandler:
                     node["inputs"]["ckpt_name"] = inputs["model"]
             
             # Update LoRA nodes
-            elif node.get("class_type") == "LoraLoader":
+            elif node.get("class_type") in ["LoraLoader", "LoraLoaderModelOnly"]:
                 if "lora" in inputs:
                     node["inputs"]["lora_name"] = inputs["lora"]["name"]
                     node["inputs"]["strength_model"] = inputs["lora"].get("strength", 0.8)
@@ -162,6 +162,44 @@ class ComfyUIHandler:
         base_url = os.environ.get('R2_PUBLIC_URL', '').rstrip('/')
         return f"{base_url}/{key}"
 
+def download_lora_if_needed(lora_name: str) -> bool:
+    """Download LoRA file from Firebase Storage if not present locally"""
+    lora_dir = "/ComfyUI/models/loras"
+    lora_path = os.path.join(lora_dir, lora_name)
+    
+    # Check if LoRA already exists
+    if os.path.exists(lora_path):
+        print(f"LoRA {lora_name} already exists locally")
+        return True
+    
+    # Ensure LoRA directory exists
+    os.makedirs(lora_dir, exist_ok=True)
+    
+    # Firebase Storage URLs for known LoRAs
+    firebase_urls = {
+        "mix4.safetensors": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2F1753591512468_mix4.safetensors?alt=media&token=d2c720b3-4aef-4ac4-8651-4a93b936fbeb",
+        "shiyuanlimei.safetensors": "https://firebasestorage.googleapis.com/v0/b/amlwd-image-gen.firebasestorage.app/o/loras%2Fshiyuanlimei.safetensors?alt=media"
+    }
+    
+    if lora_name in firebase_urls:
+        try:
+            print(f"Downloading LoRA {lora_name} from Firebase Storage...")
+            response = requests.get(firebase_urls[lora_name], stream=True)
+            response.raise_for_status()
+            
+            with open(lora_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print(f"Successfully downloaded LoRA {lora_name}")
+            return True
+        except Exception as e:
+            print(f"Failed to download LoRA {lora_name}: {e}")
+            return False
+    else:
+        print(f"Unknown LoRA {lora_name}, no download URL available")
+        return False
+
 handler_instance = ComfyUIHandler()
 
 def handler(job):
@@ -209,8 +247,25 @@ def handler(job):
                     job_input['override_inputs']
                 )
         else:
-            # Use template
-            workflow_type = job_input.get('workflow_type', 'sd15_basic')
+            # Determine workflow type based on inputs
+            inputs = job_input.get('inputs', job_input)
+            
+            # Check if LoRA is requested
+            if 'lora' in inputs and inputs['lora'].get('name') != 'none':
+                lora_name = inputs['lora']['name']
+                print(f"LoRA requested: {lora_name}")
+                
+                # Download LoRA if needed
+                if download_lora_if_needed(lora_name):
+                    workflow_type = 'flux_with_lora'
+                    print(f"Using LoRA workflow: {workflow_type}")
+                else:
+                    print(f"LoRA download failed, falling back to basic workflow")
+                    workflow_type = job_input.get('workflow_type', 'flux_simple')
+            else:
+                workflow_type = job_input.get('workflow_type', 'flux_simple')
+                print(f"Using basic workflow: {workflow_type}")
+            
             workflow = handler_instance.load_workflow_template(workflow_type)
             
             # Apply inputs
