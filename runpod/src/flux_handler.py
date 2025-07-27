@@ -264,50 +264,20 @@ class FluxHandler:
         
         # Update LoRA if specified
         if lora_name:
-            # Ensure lora_name has the .safetensors extension
-            if not lora_name.endswith('.safetensors'):
-                lora_filename = f"{lora_name}.safetensors"
-            else:
-                lora_filename = lora_name
-                
-            # Check various possible locations for the LoRA
-            lora_paths = [
-                f"/ComfyUI/models/loras/{lora_filename}",
-                f"/workspace/ComfyUI/models/loras/{lora_filename}",
-                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
-            ]
-            
-            lora_exists = False
-            lora_path = None
-            for path in lora_paths:
-                if os.path.exists(path):
-                    lora_exists = True
-                    lora_path = path
-                    logger.info(f"Found LoRA at: {path}")
-                    # Verify file size
-                    file_size = os.path.getsize(path) / (1024 * 1024)  # MB
-                    if file_size < 0.1:  # Less than 100KB is suspicious
-                        logger.warning(f"LoRA file seems too small: {file_size:.2f} MB")
-                        lora_exists = False
-                    break
-                    
-            if not lora_exists:
-                logger.warning(f"LoRA {lora_filename} not found or invalid locally")
-                return workflow  # Return workflow unchanged if LoRA not found
-            
-            # Update LoRA nodes with the filename (ComfyUI expects filename with extension)
-            lora_updated = False
+            # Only update LoRA strength if using dynamic workflow (name is already set)
+            # For dynamic workflows, only update the strength
             for node_id, node in workflow.items():
                 if node.get("class_type") in ["LoraLoader", "LoraLoaderModelOnly"]:
-                    node["inputs"]["lora_name"] = lora_filename
-                    node["inputs"]["strength_model"] = lora_strength
-                    if "strength_clip" in node["inputs"]:
-                        node["inputs"]["strength_clip"] = lora_strength
-                    logger.info(f"Updated LoRA node {node_id}: {lora_filename} with strength {lora_strength}")
-                    lora_updated = True
-                    
-            if not lora_updated:
-                logger.warning(f"No LoRA nodes found in workflow to update!")
+                    # Check if this is a dynamically created workflow (lora_name already set)
+                    if "lora_name" in node["inputs"] and node["inputs"]["lora_name"]:
+                        # Only update strength for dynamic workflows
+                        node["inputs"]["strength_model"] = lora_strength
+                        if "strength_clip" in node["inputs"]:
+                            node["inputs"]["strength_clip"] = lora_strength
+                        logger.info(f"Updated LoRA strength in node {node_id} to {lora_strength}")
+                    else:
+                        # This shouldn't happen with dynamic workflows, but keep as fallback
+                        logger.warning("LoRA node found but name not set in dynamic workflow")
         
         return workflow
     
@@ -391,8 +361,19 @@ class FluxHandler:
         """Queue workflow and return prompt ID"""
         p = {"prompt": workflow}
         logger.debug(f"Queueing prompt to {self.server_url}/prompt")
+        
+        # Log LoRA information for debugging
+        for node_id, node in workflow.items():
+            if node.get("class_type") in ["LoraLoader", "LoraLoaderModelOnly"]:
+                logger.info(f"LoRA node {node_id} config: {node['inputs']}")
+        
         try:
             response = requests.post(f"{self.server_url}/prompt", json=p)
+            
+            # Log response for debugging validation errors
+            if response.status_code != 200:
+                logger.error(f"ComfyUI response: {response.text}")
+                
             response.raise_for_status()
             result = response.json()
             logger.debug(f"Queue response: {result}")
