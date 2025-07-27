@@ -72,7 +72,7 @@ class FluxHandler:
             "6": {
                 "inputs": {
                     "text": "a beautiful landscape",
-                    "clip": ["40", 1]
+                    "clip": ["38", 0]
                 },
                 "class_type": "CLIPTextEncode",
                 "_meta": {"title": "CLIP Text Encode (Positive Prompt)"}
@@ -138,12 +138,10 @@ class FluxHandler:
                 "inputs": {
                     "lora_name": lora_name,
                     "strength_model": 0.8,
-                    "strength_clip": 0.8,
-                    "model": ["37", 0],
-                    "clip": ["38", 0]
+                    "model": ["37", 0]
                 },
-                "class_type": "LoraLoader",
-                "_meta": {"title": "LoRA Loader"}
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "LoRA Loader (Model Only)"}
             },
             "124": {
                 "inputs": {
