@@ -194,7 +194,6 @@ class FluxHandler:
     
     def check_models(self):
         """Check available models"""
-        import os
         
         # Check different possible mount points
         mount_points = ["/workspace", "/runpod-volume", "/"]
@@ -391,7 +390,6 @@ def runpod_handler(job):
             if result.returncode == 0:
                 logger.info(f"LoRA downloaded successfully to {lora_path}")
                 # Check file size
-                import os
                 size = os.path.getsize(lora_path) / (1024 * 1024)  # MB
                 return {
                     "status": "success",
