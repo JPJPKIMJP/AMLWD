@@ -158,14 +158,12 @@
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <select id="loraSelect" style="flex: 1;">
                         <option value="none">None</option>
-                        <option value="mix4">Mix4</option>
-                        <option value="shiyuanlimei_v1.0">Shiyuanlimei v1.0</option>
                     </select>
                     <input type="range" id="loraStrength" min="0" max="1" step="0.1" value="0.8" style="flex: 1;">
                     <span id="loraStrengthValue">0.8</span>
                     <button onclick="showLoraManager()" style="background-color: #2196F3; padding: 5px 10px; font-size: 0.9em;">Manage LoRAs</button>
                 </div>
-                <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.85em;">
+                <div id="loraWarning" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.85em;">
                     ⚠️ Note: Only FLUX-compatible LoRAs will work. SD1.5 LoRAs are not compatible.
                 </div>
             </div>
@@ -229,9 +227,30 @@
             
             <div style="margin: 20px 0; padding-top: 20px; border-top: 1px solid #ddd;">
                 <h3>Add New LoRA</h3>
-                <input type="text" id="newLoraName" placeholder="LoRA Name" style="width: 100%; margin: 5px 0;">
-                <input type="url" id="newLoraUrl" placeholder="LoRA URL (Firebase Storage)" style="width: 100%; margin: 5px 0;">
-                <button onclick="addNewLora()" style="background-color: #4CAF50;">Add LoRA</button>
+                
+                <!-- Easy Upload Option -->
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                    <h4 style="margin-top: 0;">📤 Easy Upload (Recommended)</h4>
+                    <p style="font-size: 0.9em; margin: 10px 0;">Simply select your LoRA file (.safetensors) and we'll handle everything!</p>
+                    <input type="file" id="loraFileUpload" accept=".safetensors" style="margin: 10px 0; width: 100%;">
+                    <button onclick="uploadLoraFile()" style="background-color: #2196F3; width: 100%;">Upload LoRA File</button>
+                    <div id="uploadProgress" style="display: none; margin-top: 10px;">
+                        <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                            <div id="uploadProgressBar" style="background: #2196F3; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                        <p id="uploadStatus" style="text-align: center; margin-top: 5px; font-size: 0.9em;">Uploading...</p>
+                    </div>
+                </div>
+                
+                <!-- Manual Option -->
+                <details style="margin-top: 15px;">
+                    <summary style="cursor: pointer; color: #666;">Manual Entry (Advanced)</summary>
+                    <div style="margin-top: 10px;">
+                        <input type="text" id="newLoraName" placeholder="LoRA Name" style="width: 100%; margin: 5px 0;">
+                        <input type="url" id="newLoraUrl" placeholder="LoRA URL (Firebase Storage)" style="width: 100%; margin: 5px 0;">
+                        <button onclick="addNewLora()" style="background-color: #4CAF50;">Add LoRA Manually</button>
+                    </div>
+                </details>
             </div>
         </div>
     </div>
@@ -251,6 +270,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 
     <script>
         // Initialize Firebase
@@ -266,6 +286,7 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const functions = firebase.functions();
+        const storage = firebase.storage();
         
         // History state
         let lastImageDoc = null;
@@ -296,6 +317,9 @@
                 
                 // Load user's image history
                 loadImageHistory();
+                
+                // Update LoRA dropdown
+                updateLoraSelect();
             } else {
                 // User is signed out
                 document.getElementById('authContainer').style.display = 'block';
@@ -491,6 +515,12 @@
                     if (loraSelect && loraSelect.value !== 'none') {
                         params.lora_name = loraSelect.value;
                         params.lora_strength = parseFloat(loraStrength.value);
+                        
+                        // Check if this is a custom LoRA and add the URL
+                        const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+                        if (customLoras[loraSelect.value]) {
+                            params.lora_url = customLoras[loraSelect.value].url;
+                        }
                     }
                     
                     // Add image for image-to-image
@@ -605,6 +635,7 @@
             if (!append) {
                 historyEl.innerHTML = '<p style="color: #999;">Loading history...</p>';
                 lastImageDoc = null;
+                window.historyImageData = {}; // Clear previous data
             }
             
             try {
@@ -621,12 +652,24 @@
                 if (result.data.images.length > 0) {
                     lastImageDoc = result.data.images[result.data.images.length - 1].id;
                     
-                    const imagesHtml = result.data.images.map((item) => `
+                    // Calculate offset for appending
+                    const existingCount = append ? Object.keys(window.historyImageData || {}).length : 0;
+                    
+                    const imagesHtml = result.data.images.map((item, index) => {
+                        // Store data in a safe way
+                        if (!window.historyImageData) window.historyImageData = {};
+                        const imgKey = `img_${existingCount + index}`;
+                        window.historyImageData[imgKey] = {
+                            url: item.imageUrl,
+                            prompt: item.prompt
+                        };
+                        
+                        return `
                         <div style="border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #f9f9f9;">
                             <img src="${item.imageUrl}" 
                                  alt="${item.prompt}" 
                                  style="width: 100%; height: 200px; object-fit: cover; border-radius: 5px; margin-bottom: 10px; cursor: pointer;"
-                                 onclick="viewFullImage('${item.imageUrl}', '${item.prompt.replace(/'/g, "\\'")}')"
+                                 onclick="viewFullImageByIndex('${imgKey}')"
                                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                             <div style="display: none; width: 100%; height: 200px; background: #f0f0f0; border-radius: 5px; margin-bottom: 10px; align-items: center; justify-content: center; color: #666;">
                                 <span>Image not available</span>
@@ -639,7 +682,8 @@
                                 <button onclick="showGenerationInfo('${item.id || ''}', '${encodeURIComponent(JSON.stringify(item))}')" style="font-size: 0.8em; padding: 5px 10px; background-color: #2196F3;">Info</button>
                             </div>
                         </div>
-                    `).join('');
+                        `;
+                    }).join('');
                     
                     if (append) {
                         historyEl.innerHTML += imagesHtml;
@@ -687,6 +731,14 @@
             if (confirm('This will clear your local cache only. Images stored in the cloud will remain. Continue?')) {
                 localStorage.removeItem('imageHistory');
                 await loadImageHistory();
+            }
+        }
+        
+        // View full image by index (safer for URLs with special characters)
+        function viewFullImageByIndex(imgIndex) {
+            const data = window.historyImageData[imgIndex];
+            if (data) {
+                viewFullImage(data.url, data.prompt);
             }
         }
         
@@ -785,13 +837,35 @@
             }
         }
         
-        // Initialize LoRA strength slider
+        // Initialize LoRA strength slider and dropdown
         document.addEventListener('DOMContentLoaded', function() {
             const loraStrengthSlider = document.getElementById('loraStrength');
             const loraStrengthValue = document.getElementById('loraStrengthValue');
             if (loraStrengthSlider) {
                 loraStrengthSlider.addEventListener('input', (e) => {
                     loraStrengthValue.textContent = e.target.value;
+                });
+            }
+            
+            // Initialize LoRA dropdown
+            updateLoraSelect();
+            
+            // Add LoRA selection listener
+            const loraSelect = document.getElementById('loraSelect');
+            if (loraSelect) {
+                loraSelect.addEventListener('change', function() {
+                    const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+                    const warningEl = document.getElementById('loraWarning');
+                    
+                    if (this.value !== 'none' && customLoras[this.value]) {
+                        warningEl.innerHTML = '⚠️ <strong>Custom LoRA selected:</strong> Currently, custom uploaded LoRAs are not applied due to RunPod limitations. Image will be generated without LoRA style.';
+                        warningEl.style.background = '#ffebee';
+                        warningEl.style.borderColor = '#ffcdd2';
+                    } else {
+                        warningEl.innerHTML = '⚠️ Note: Only FLUX-compatible LoRAs will work. SD1.5 LoRAs are not compatible.';
+                        warningEl.style.background = '#fff3cd';
+                        warningEl.style.borderColor = '#ffeaa7';
+                    }
                 });
             }
         });
@@ -811,35 +885,29 @@
             // Get current LoRAs from localStorage (in real app, this would be from Firebase)
             const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
             
-            const defaultLoras = {
-                'mix4': 'Mix4 (SD1.5 - Not Compatible)',
-                'shiyuanlimei_v1.0': 'Shiyuanlimei v1.0 (SD1.5 - Not Compatible)'
-            };
-            
             let html = '';
-            
-            // Show default LoRAs
-            for (const [key, name] of Object.entries(defaultLoras)) {
-                html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; background: #fff3cd;">
-                        <span>${name}</span>
-                        <span style="color: #ff6b6b; font-size: 0.9em;">⚠️ Incompatible</span>
-                    </div>
-                `;
-            }
             
             // Show custom LoRAs
             for (const [key, data] of Object.entries(customLoras)) {
+                const uploadDate = data.uploadedAt ? new Date(data.uploadedAt).toLocaleDateString() : 'Unknown';
+                const fileSize = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown';
                 html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0;">
-                        <span>${data.name}</span>
-                        <button onclick="deleteLora('${key}')" style="background: #f44336; padding: 5px 10px; font-size: 0.8em;">Delete</button>
+                    <div style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; background: #e8f5e9;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${data.name}</strong>
+                                <div style="font-size: 0.8em; color: #666; margin-top: 2px;">
+                                    Size: ${fileSize} | Uploaded: ${uploadDate}
+                                </div>
+                            </div>
+                            <button onclick="deleteLora('${key}')" style="background: #f44336; padding: 5px 10px; font-size: 0.8em;">Delete</button>
+                        </div>
                     </div>
                 `;
             }
             
-            if (Object.keys(customLoras).length === 0 && Object.keys(defaultLoras).length > 0) {
-                html += '<p style="color: #666; margin-top: 10px;">No FLUX-compatible LoRAs installed yet.</p>';
+            if (Object.keys(customLoras).length === 0) {
+                html += '<p style="color: #666; margin-top: 10px;">No FLUX-compatible LoRAs uploaded yet. Use the upload button below to add your own!</p>';
             }
             
             loraList.innerHTML = html;
@@ -892,11 +960,7 @@
             // Clear current options
             select.innerHTML = '<option value="none">None</option>';
             
-            // Add default options (marked as incompatible)
-            select.innerHTML += '<option value="mix4">Mix4 (Incompatible)</option>';
-            select.innerHTML += '<option value="shiyuanlimei_v1.0">Shiyuanlimei v1.0 (Incompatible)</option>';
-            
-            // Add custom LoRAs
+            // Add custom LoRAs only
             for (const [key, data] of Object.entries(customLoras)) {
                 select.innerHTML += `<option value="${key}">${data.name}</option>`;
             }
@@ -948,6 +1012,100 @@
             const statusEl = document.getElementById('status');
             statusEl.innerHTML = `<p class="${type}">${message}</p>`;
             setTimeout(() => statusEl.innerHTML = '', 3000);
+        }
+        
+        // Upload LoRA file to Firebase Storage
+        async function uploadLoraFile() {
+            const fileInput = document.getElementById('loraFileUpload');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a LoRA file to upload');
+                return;
+            }
+            
+            if (!file.name.endsWith('.safetensors')) {
+                alert('Please select a valid .safetensors file');
+                return;
+            }
+            
+            // Show progress
+            const progressDiv = document.getElementById('uploadProgress');
+            const progressBar = document.getElementById('uploadProgressBar');
+            const statusText = document.getElementById('uploadStatus');
+            
+            progressDiv.style.display = 'block';
+            progressBar.style.width = '0%';
+            statusText.textContent = 'Uploading...';
+            
+            try {
+                // Create a storage reference
+                const fileName = file.name;
+                const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+                const storageRef = storage.ref(`loras/${auth.currentUser.uid}/${safeName}`);
+                
+                // Upload file with progress monitoring
+                const uploadTask = storageRef.put(file);
+                
+                uploadTask.on('state_changed', 
+                    (snapshot) => {
+                        // Update progress
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        progressBar.style.width = progress + '%';
+                        statusText.textContent = `Uploading... ${Math.round(progress)}%`;
+                    },
+                    (error) => {
+                        // Handle error
+                        console.error('Upload error:', error);
+                        progressDiv.style.display = 'none';
+                        alert('Upload failed: ' + error.message);
+                    },
+                    async () => {
+                        // Upload completed successfully
+                        statusText.textContent = 'Processing...';
+                        
+                        // Get download URL
+                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                        
+                        // Extract LoRA name from filename (remove extension)
+                        const loraName = fileName.replace('.safetensors', '').replace(/[_-]/g, ' ');
+                        
+                        // Save to custom LoRAs
+                        const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+                        const key = loraName.toLowerCase().replace(/\s+/g, '_');
+                        
+                        customLoras[key] = { 
+                            name: loraName, 
+                            url: downloadURL,
+                            uploadedAt: new Date().toISOString(),
+                            fileSize: file.size
+                        };
+                        
+                        localStorage.setItem('customLoras', JSON.stringify(customLoras));
+                        
+                        // Update UI
+                        updateLoraSelect();
+                        loadLoraList();
+                        
+                        // Clear file input
+                        fileInput.value = '';
+                        
+                        // Hide progress and show success
+                        progressDiv.style.display = 'none';
+                        alert(`LoRA "${loraName}" uploaded successfully!`);
+                        
+                        // Auto-select the newly uploaded LoRA
+                        const loraSelect = document.getElementById('loraSelect');
+                        if (loraSelect) {
+                            loraSelect.value = key;
+                        }
+                    }
+                );
+            } catch (error) {
+                console.error('Upload error:', error);
+                progressDiv.style.display = 'none';
+                alert('Upload failed: ' + error.message);
+            }
         }
     </script>
 </body>

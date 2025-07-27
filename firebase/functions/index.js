@@ -231,6 +231,35 @@ exports.generateImageSecure = functions
   try {
     const startTime = Date.now();
     
+    // Build request payload
+    const requestPayload = {
+      prompt: validatedInput.prompt,
+      width: validatedInput.width,
+      height: validatedInput.height,
+      // Add image for img2img if provided
+      ...(inputImageBase64 && { image: inputImageBase64 }),
+      // Add LoRA parameters if provided
+      // TEMPORARILY DISABLED: Custom LoRA URLs need RunPod handler update
+      // For now, skip LoRA if it has a custom URL
+      ...(data.lora_name && data.lora_name !== 'none' && !data.lora_url && { 
+        lora_name: data.lora_name,
+        lora_strength: data.lora_strength || 0.8
+      }),
+      // FLUX doesn't use these traditional parameters
+      // num_inference_steps: validatedInput.steps,
+      // guidance_scale: validatedInput.guidance_scale,
+      // negative_prompt is not used in FLUX
+      // ...(validatedInput.seed !== -1 && { seed: validatedInput.seed }),
+      // ...(validatedInput.num_images > 1 && { num_images: validatedInput.num_images })
+    };
+    
+    // Log warning if custom LoRA is requested
+    if (data.lora_url) {
+      console.log('Warning: Custom LoRA URLs not yet supported by RunPod handler. Generating without LoRA.');
+    }
+    
+    console.log('Sending to RunPod:', JSON.stringify(requestPayload));
+    
     // Call RunPod API with minimal SDXL parameters
     // Use AbortController for custom timeout
     const controller = new AbortController();
@@ -244,24 +273,7 @@ exports.generateImageSecure = functions
       },
       signal: controller.signal,
       body: JSON.stringify({
-        input: {
-          prompt: validatedInput.prompt,
-          width: validatedInput.width,
-          height: validatedInput.height,
-          // Add image for img2img if provided
-          ...(inputImageBase64 && { image: inputImageBase64 }),
-          // Add LoRA parameters if provided
-          ...(data.lora_name && data.lora_name !== 'none' && { 
-            lora_name: data.lora_name,
-            lora_strength: data.lora_strength || 0.8
-          }),
-          // FLUX doesn't use these traditional parameters
-          // num_inference_steps: validatedInput.steps,
-          // guidance_scale: validatedInput.guidance_scale,
-          // negative_prompt is not used in FLUX
-          // ...(validatedInput.seed !== -1 && { seed: validatedInput.seed }),
-          // ...(validatedInput.num_images > 1 && { num_images: validatedInput.num_images })
-        }
+        input: requestPayload
       })
     }).finally(() => {
       clearTimeout(timeoutId);
