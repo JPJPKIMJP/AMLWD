@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoRA Upload - AMLWD</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .upload-box {
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            padding: 60px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #0f0f0f;
+        }
+        
+        .upload-box:hover, .upload-box.dragover {
+            border-color: #764ba2;
+            background: #1f1f1f;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #0f3f0f;
+            border: 1px solid #0f5f0f;
+            color: #4ade80;
+        }
+        
+        .status.error {
+            background: #3f0f0f;
+            border: 1px solid #5f0f0f;
+            color: #f87171;
+        }
+        
+        .command-box {
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: monospace;
+            cursor: pointer;
+            word-break: break-all;
+        }
+        
+        .command-box:hover {
+            background: #1f1f1f;
+        }
+        
+        #file-input { display: none; }
+        
+        .loading {
+            text-align: center;
+            color: #888;
+        }
+        
+        .admin-btn {
+            background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loading" class="loading">
+            <h2>Loading...</h2>
+            <p>Checking authentication</p>
+        </div>
+        
+        <div id="content" style="display: none;">
+            <h1>LoRA Upload</h1>
+            
+            <div class="upload-box" id="uploadBox">
+                <h3>📁 Drop your .safetensors file here</h3>
+                <p>or click to browse</p>
+            </div>
+            
+            <input type="file" id="file-input" accept=".safetensors">
+            
+            <div id="status" class="status"></div>
+            
+            <div id="instructions" style="display: none;">
+                <h3>📋 Installation Command:</h3>
+                <div class="command-box" id="command"></div>
+                <p style="text-align: center; color: #888;">Click to copy</p>
+                
+                <div id="adminSection" style="display: none; margin-top: 20px;">
+                    <button class="btn admin-btn" onclick="autoDeploy()">🔧 Auto-Deploy (Admin)</button>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px;">
+                <button class="btn" onclick="location.href='/'">← Back to Generator</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+    
+    <script>
+        // Firebase config
+        firebase.initializeApp({
+            apiKey: "AIzaSyDQQhzQZlgCBgtH5PGGYnHlYDGfEUOfbq0",
+            authDomain: "amlwd-image-gen.firebaseapp.com",
+            projectId: "amlwd-image-gen",
+            storageBucket: "amlwd-image-gen.appspot.com",
+            messagingSenderId: "837729531658",
+            appId: "1:837729531658:web:e2ddcfd99dab1d0eb4f709"
+        });
+        
+        const auth = firebase.auth();
+        const storage = firebase.storage();
+        const firestore = firebase.firestore();
+        
+        let currentLoraUrl = null;
+        let currentLoraName = null;
+        let isAdmin = false;
+        
+        // Set persistence
+        auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        
+        // Add a longer timeout for auth check
+        let authTimeout = setTimeout(() => {
+            // If no auth state after 5 seconds, assume not logged in
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').innerHTML = `
+                <div style="text-align: center;">
+                    <h2>Authentication Timeout</h2>
+                    <p>Please log in first</p>
+                    <button class="btn" onclick="location.href='/'">Go to Login</button>
+                </div>
+            `;
+            document.getElementById('content').style.display = 'block';
+        }, 5000);
+        
+        // Wait for auth state
+        auth.onAuthStateChanged(async (user) => {
+            clearTimeout(authTimeout);  // Clear the timeout since we got a response
+            document.getElementById('loading').style.display = 'none';
+            
+            if (!user) {
+                // Not logged in - redirect in 2 seconds
+                document.getElementById('content').innerHTML = `
+                    <div style="text-align: center;">
+                        <h2>Not Logged In</h2>
+                        <p>Redirecting to login...</p>
+                    </div>
+                `;
+                document.getElementById('content').style.display = 'block';
+                setTimeout(() => location.href = '/', 2000);
+                return;
+            }
+            
+            // User is logged in
+            document.getElementById('content').style.display = 'block';
+            
+            // Check admin status
+            try {
+                const adminDoc = await firestore.collection('admins').doc(user.uid).get();
+                isAdmin = adminDoc.exists && adminDoc.data()?.isAdmin === true;
+            } catch (e) {
+                console.error('Admin check failed:', e);
+            }
+        });
+        
+        // File handling
+        const uploadBox = document.getElementById('uploadBox');
+        const fileInput = document.getElementById('file-input');
+        const statusEl = document.getElementById('status');
+        
+        uploadBox.onclick = () => fileInput.click();
+        
+        // Drag and drop
+        uploadBox.ondragover = (e) => {
+            e.preventDefault();
+            uploadBox.classList.add('dragover');
+        };
+        
+        uploadBox.ondragleave = () => {
+            uploadBox.classList.remove('dragover');
+        };
+        
+        uploadBox.ondrop = (e) => {
+            e.preventDefault();
+            uploadBox.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        };
+        
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+        
+        async function handleFile(file) {
+            if (!file || !file.name.endsWith('.safetensors')) {
+                showStatus('Please select a .safetensors file', 'error');
+                return;
+            }
+            
+            showStatus(`Uploading ${file.name}...`, 'success');
+            
+            try {
+                // Upload to Firebase Storage
+                const ref = storage.ref(`loras/${Date.now()}_${file.name}`);
+                await ref.put(file);
+                const url = await ref.getDownloadURL();
+                
+                // Save to Firestore
+                await firestore.collection('user_loras').add({
+                    userId: auth.currentUser.uid,
+                    filename: file.name,
+                    downloadURL: url,
+                    uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                showStatus('Upload successful!', 'success');
+                showInstructions(url, file.name);
+                
+            } catch (error) {
+                showStatus('Upload failed: ' + error.message, 'error');
+            }
+        }
+        
+        function showStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+            statusEl.style.display = 'block';
+        }
+        
+        function showInstructions(url, filename) {
+            currentLoraUrl = url;
+            currentLoraName = filename;
+            
+            const command = `wget -O /workspace/ComfyUI/models/loras/${filename} "${url}"`;
+            document.getElementById('command').textContent = command;
+            document.getElementById('instructions').style.display = 'block';
+            
+            if (isAdmin) {
+                document.getElementById('adminSection').style.display = 'block';
+            }
+            
+            // Copy on click
+            document.getElementById('command').onclick = () => {
+                navigator.clipboard.writeText(command);
+                showStatus('Command copied!', 'success');
+            };
+        }
+        
+        async function autoDeploy() {
+            if (!currentLoraUrl || !currentLoraName) return;
+            
+            showStatus('Deploying to RunPod...', 'success');
+            
+            try {
+                const deployFunc = firebase.functions().httpsCallable('deployLoraToRunPod');
+                const result = await deployFunc({
+                    loraUrl: currentLoraUrl,
+                    loraName: currentLoraName
+                });
+                
+                showStatus('Deployment recorded! Run the command on your pod.', 'success');
+            } catch (error) {
+                showStatus('Deploy failed: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Find mix4.safetensors LoRA</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>Find mix4.safetensors in Firebase Storage</h1>
+    <button onclick="findMix4()">Search for mix4.safetensors</button>
+    <pre id="results"></pre>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD5nLmrmT3hW3j74s2bY3MrWzhVLYPvFiA",
+            authDomain: "amlwd-image-gen.firebaseapp.com",
+            projectId: "amlwd-image-gen",
+            storageBucket: "amlwd-image-gen.firebasestorage.app",
+            messagingSenderId: "206782178649",
+            appId: "1:206782178649:web:7abe4d0ee973c2b2e96c10"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+        
+        async function findMix4() {
+            const results = document.getElementById('results');
+            results.textContent = 'Searching...\n\n';
+            
+            try {
+                // Sign in if needed
+                if (!auth.currentUser) {
+                    await auth.signInAnonymously();
+                }
+                
+                // Search in user_loras collection
+                results.textContent += '1. Searching user_loras collection...\n';
+                const lorasSnapshot = await db.collection('user_loras')
+                    .where('filename', '==', 'mix4.safetensors')
+                    .get();
+                    
+                if (!lorasSnapshot.empty) {
+                    lorasSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        results.textContent += `\nFound in user_loras:\n`;
+                        results.textContent += `- Doc ID: ${doc.id}\n`;
+                        results.textContent += `- Filename: ${data.filename}\n`;
+                        results.textContent += `- Download URL: ${data.downloadURL}\n`;
+                        results.textContent += `- Uploaded: ${data.uploadedAt?.toDate()}\n`;
+                        results.textContent += `- User ID: ${data.userId}\n`;
+                        
+                        // Copy URL to clipboard button
+                        results.textContent += `\nURL for flux_handler.py:\n`;
+                        results.textContent += `"mix4": "${data.downloadURL}"\n`;
+                    });
+                } else {
+                    results.textContent += 'Not found in user_loras collection.\n';
+                }
+                
+                // Try to list files in storage
+                results.textContent += '\n2. Checking Firebase Storage loras/ directory...\n';
+                const storageRef = storage.ref('loras');
+                
+                try {
+                    const listResult = await storageRef.listAll();
+                    results.textContent += `Found ${listResult.items.length} files in loras/\n`;
+                    
+                    for (const item of listResult.items) {
+                        if (item.name.includes('mix4')) {
+                            const url = await item.getDownloadURL();
+                            results.textContent += `\nFound: ${item.name}\n`;
+                            results.textContent += `Path: ${item.fullPath}\n`;
+                            results.textContent += `URL: ${url}\n`;
+                        }
+                    }
+                    
+                    // Also check for nested directories
+                    for (const prefix of listResult.prefixes) {
+                        const subList = await prefix.listAll();
+                        for (const item of subList.items) {
+                            if (item.name.includes('mix4')) {
+                                const url = await item.getDownloadURL();
+                                results.textContent += `\nFound in ${prefix.name}/: ${item.name}\n`;
+                                results.textContent += `Path: ${item.fullPath}\n`;
+                                results.textContent += `URL: ${url}\n`;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    results.textContent += `Storage error: ${error.message}\n`;
+                }
+                
+            } catch (error) {
+                results.textContent += `\nError: ${error.message}\n`;
+            }
+        }
+    </script>
+</body>
+</html>

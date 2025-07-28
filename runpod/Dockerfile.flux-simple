@@ -1,0 +1,11 @@
+# Simple Dockerfile that just updates the handler
+FROM jpjpkimjp/flux-comfyui:latest
+
+# Copy updated handler with LoRA support
+COPY src/flux_handler.py /handler.py
+COPY src/workflows/flux_with_lora.json /workflows/flux_with_lora.json
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+# The rest stays the same
+CMD ["/bin/bash", "/start.sh"]

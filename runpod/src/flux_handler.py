@@ -60,6 +60,20 @@ if os.environ.get('R2_ENDPOINT'):
 else:
     logger.warn("R2 not configured - will return base64")
 
+# S3 volume client setup for LoRA storage
+s3_volume_client = None
+if os.environ.get('S3_ENDPOINT'):
+    logger.info("Setting up S3 volume client for LoRA storage...")
+    s3_volume_client = boto3.client(
+        's3',
+        endpoint_url=os.environ.get('S3_ENDPOINT'),
+        aws_access_key_id=os.environ.get('S3_ACCESS_KEY'),
+        aws_secret_access_key=os.environ.get('S3_SECRET_KEY')
+    )
+    logger.info(f"S3 volume client configured for bucket: {os.environ.get('S3_BUCKET')}")
+else:
+    logger.warn("S3 volume not configured - LoRAs will use local storage")
+
 class FluxHandler:
     def __init__(self):
         self.server_url = "http://localhost:8188"
@@ -461,6 +475,69 @@ class FluxHandler:
         
         base_url = os.environ.get('R2_PUBLIC_URL', '').rstrip('/')
         return f"{base_url}/{key}"
+    
+    def check_lora_in_s3(self, lora_filename: str) -> bool:
+        """Check if LoRA exists in S3 volume"""
+        if not s3_volume_client:
+            return False
+        
+        try:
+            key = f"models/loras/{lora_filename}"
+            s3_volume_client.head_object(
+                Bucket=os.environ.get('S3_BUCKET'),
+                Key=key
+            )
+            logger.info(f"LoRA found in S3: {key}")
+            return True
+        except Exception as e:
+            logger.debug(f"LoRA not found in S3: {lora_filename}")
+            return False
+    
+    def download_lora_from_s3(self, lora_filename: str, local_path: str) -> bool:
+        """Download LoRA from S3 to local path"""
+        if not s3_volume_client:
+            return False
+        
+        try:
+            key = f"models/loras/{lora_filename}"
+            logger.info(f"Downloading LoRA from S3: {key} to {local_path}")
+            
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            s3_volume_client.download_file(
+                Bucket=os.environ.get('S3_BUCKET'),
+                Key=key,
+                Filename=local_path
+            )
+            
+            file_size = os.path.getsize(local_path) / (1024 * 1024)  # MB
+            logger.info(f"Successfully downloaded LoRA from S3 ({file_size:.1f} MB)")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to download LoRA from S3: {e}")
+            return False
+    
+    def upload_lora_to_s3(self, local_path: str, lora_filename: str) -> bool:
+        """Upload LoRA to S3 volume"""
+        if not s3_volume_client:
+            return False
+        
+        try:
+            key = f"models/loras/{lora_filename}"
+            logger.info(f"Uploading LoRA to S3: {local_path} -> {key}")
+            
+            with open(local_path, 'rb') as f:
+                s3_volume_client.put_object(
+                    Bucket=os.environ.get('S3_BUCKET'),
+                    Key=key,
+                    Body=f,
+                    ContentType='application/octet-stream'
+                )
+            
+            logger.info(f"Successfully uploaded LoRA to S3: {key}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to upload LoRA to S3: {e}")
+            return False
 
 handler = FluxHandler()
 
@@ -492,22 +569,37 @@ def runpod_handler(job):
             
             logger.info(f"Downloading LoRA: {lora_name} from {lora_url}")
             
-            # Download to ComfyUI models directory
-            lora_path = f"/workspace/ComfyUI/models/loras/{lora_name}"
+            # Download to temporary location first
+            temp_path = f"/tmp/{lora_name}"
             
             # Use wget to download
-            cmd = ['wget', '-O', lora_path, lora_url]
+            cmd = ['wget', '-O', temp_path, lora_url]
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode == 0:
-                logger.info(f"LoRA downloaded successfully to {lora_path}")
+                logger.info(f"LoRA downloaded successfully to {temp_path}")
                 # Check file size
-                size = os.path.getsize(lora_path) / (1024 * 1024)  # MB
+                size = os.path.getsize(temp_path) / (1024 * 1024)  # MB
+                
+                # Upload to S3 volume if configured
+                if s3_volume_client and handler.upload_lora_to_s3(temp_path, lora_name):
+                    logger.info(f"LoRA uploaded to S3 volume")
+                    s3_uploaded = True
+                else:
+                    s3_uploaded = False
+                    logger.warn("S3 upload failed or not configured")
+                
+                # Also copy to local workspace for immediate use
+                local_path = f"/workspace/ComfyUI/models/loras/{lora_name}"
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                os.rename(temp_path, local_path)
+                
                 return {
                     "status": "success",
                     "message": f"LoRA downloaded successfully",
-                    "path": lora_path,
-                    "size_mb": round(size, 2)
+                    "path": local_path,
+                    "size_mb": round(size, 2),
+                    "s3_uploaded": s3_uploaded
                 }
             else:
                 logger.error(f"Failed to download LoRA: {result.stderr}")
@@ -584,6 +676,13 @@ def runpod_handler(job):
                     # Fall back to non-LoRA workflow
                     logger.info("Falling back to standard workflow without LoRA")
                     lora_name = None
+                else:
+                    # Upload to S3 if download was successful
+                    if s3_volume_client:
+                        for path in lora_paths:
+                            if os.path.exists(path):
+                                handler.upload_lora_to_s3(path, lora_filename)
+                                break
             
         
         # Check for image input (base64)
@@ -613,20 +712,40 @@ def runpod_handler(job):
         
         if lora_name:
             lora_filename = f"{lora_name}.safetensors" if not lora_name.endswith('.safetensors') else lora_name
-            lora_paths = [
-                f"/ComfyUI/models/loras/{lora_filename}",
-                f"/workspace/ComfyUI/models/loras/{lora_filename}",
-                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
-            ]
             
-            for path in lora_paths:
-                if os.path.exists(path):
-                    file_size = os.path.getsize(path) / (1024 * 1024)  # MB
-                    if file_size > 0.1:  # Valid LoRA file
+            # Check S3 first
+            if s3_volume_client and handler.check_lora_in_s3(lora_filename):
+                # Try to download from S3 to local workspace
+                local_path = f"/workspace/ComfyUI/models/loras/{lora_filename}"
+                if not os.path.exists(local_path):
+                    if handler.download_lora_from_s3(lora_filename, local_path):
                         use_lora = True
                         workflow_lora_name = lora_filename
-                        logger.info(f"Valid LoRA found at {path} ({file_size:.1f} MB)")
-                        break
+                        logger.info(f"LoRA downloaded from S3 and ready to use")
+                else:
+                    use_lora = True
+                    workflow_lora_name = lora_filename
+                    logger.info(f"LoRA already exists locally")
+            else:
+                # Check local paths
+                lora_paths = [
+                    f"/ComfyUI/models/loras/{lora_filename}",
+                    f"/workspace/ComfyUI/models/loras/{lora_filename}",
+                    f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
+                ]
+                
+                for path in lora_paths:
+                    if os.path.exists(path):
+                        file_size = os.path.getsize(path) / (1024 * 1024)  # MB
+                        if file_size > 0.1:  # Valid LoRA file
+                            use_lora = True
+                            workflow_lora_name = lora_filename
+                            logger.info(f"Valid LoRA found at {path} ({file_size:.1f} MB)")
+                            
+                            # Upload to S3 if not already there
+                            if s3_volume_client and not handler.check_lora_in_s3(lora_filename):
+                                handler.upload_lora_to_s3(path, lora_filename)
+                            break
             
             if not use_lora:
                 logger.warn(f"LoRA {lora_filename} not found or invalid, using standard workflow")

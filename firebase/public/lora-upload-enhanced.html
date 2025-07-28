@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced LoRA Upload - AMLWD</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Copy styles from original */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 2px dashed #4CAF50;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background: #f0f0f0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            background: #e8f5e9;
+            border-color: #2E7D32;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .status.success {
+            background: #c8e6c9;
+            color: #1b5e20;
+            display: block;
+        }
+        .status.error {
+            background: #ffcdd2;
+            color: #b71c1c;
+            display: block;
+        }
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .lora-list {
+            margin-top: 30px;
+            display: grid;
+            gap: 15px;
+        }
+        .lora-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fafafa;
+        }
+        .lora-item.synced {
+            background: #e8f5e9;
+            border-color: #4CAF50;
+        }
+        .sync-status {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .sync-status.synced {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .code-block {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Enhanced LoRA Upload</h1>
+        <p>Upload and automatically sync LoRA models to RunPod</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <h3>📤 Drop your .safetensors file here</h3>
+            <p>or click to browse</p>
+            <input type="file" id="fileInput" accept=".safetensors" style="display: none;">
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="lora-list">
+            <h3>📦 Your LoRAs</h3>
+            <div id="loraList">
+                <p style="color: #666;">No LoRAs uploaded yet</p>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px;">
+            <h3>💡 How to Use Your LoRAs</h3>
+            <p>Once synced to RunPod (green status), use in your prompts:</p>
+            <div class="code-block">
+{
+    "prompt": "your prompt here",
+    "lora_name": "your_lora_name_here",
+    "lora_strength": 0.8
+}
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
+
+    <script>
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyD5nLmrmT3hW3j74s2bY3MrWzhVLYPvFiA",
+            authDomain: "amlwd-image-gen.firebaseapp.com",
+            projectId: "amlwd-image-gen",
+            storageBucket: "amlwd-image-gen.firebasestorage.app",
+            messagingSenderId: "206782178649",
+            appId: "1:206782178649:web:7abe4d0ee973c2b2e96c10"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+        const functions = firebase.functions();
+        
+        // Check auth
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                window.location.href = '/';
+            } else {
+                loadUserLoras();
+            }
+        });
+        
+        // UI elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const statusEl = document.getElementById('status');
+        const loraListEl = document.getElementById('loraList');
+        
+        // File handling
+        uploadArea.onclick = () => fileInput.click();
+        
+        uploadArea.ondragover = (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#2E7D32';
+            uploadArea.style.background = '#e8f5e9';
+        };
+        
+        uploadArea.ondragleave = () => {
+            uploadArea.style.borderColor = '#4CAF50';
+            uploadArea.style.background = '#f0f0f0';
+        };
+        
+        uploadArea.ondrop = (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#4CAF50';
+            uploadArea.style.background = '#f0f0f0';
+            handleFile(e.dataTransfer.files[0]);
+        };
+        
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+        
+        async function handleFile(file) {
+            if (!file || !file.name.endsWith('.safetensors')) {
+                showStatus('Please select a .safetensors file', 'error');
+                return;
+            }
+            
+            showStatus(`Uploading ${file.name}...`, 'loading');
+            
+            try {
+                // 1. Upload to Firebase Storage
+                const timestamp = Date.now();
+                const filename = file.name;
+                const storageRef = storage.ref(`loras/${timestamp}_${filename}`);
+                const uploadTask = await storageRef.put(file);
+                const downloadURL = await uploadTask.ref.getDownloadURL();
+                
+                // 2. Save to Firestore
+                const docRef = await db.collection('user_loras').add({
+                    userId: auth.currentUser.uid,
+                    filename: filename,
+                    downloadURL: downloadURL,
+                    uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    syncedToRunPod: false,
+                    syncStatus: 'pending'
+                });
+                
+                showStatus('Upload successful! Syncing to RunPod...', 'loading');
+                
+                // 3. Sync to RunPod
+                const syncResult = await syncLoraToRunPod(downloadURL, filename, docRef.id);
+                
+                if (syncResult.success) {
+                    showStatus(`✅ ${filename} uploaded and synced to RunPod!`, 'success');
+                    loadUserLoras();
+                } else {
+                    showStatus(`Upload successful but sync failed: ${syncResult.error}`, 'error');
+                }
+                
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function syncLoraToRunPod(downloadURL, filename, docId) {
+            try {
+                // Call Firebase function to sync to RunPod
+                const syncLoraToRunPod = functions.httpsCallable('syncLoraToRunPod');
+                const result = await syncLoraToRunPod({
+                    downloadURL: downloadURL,
+                    filename: filename,
+                    docId: docId
+                });
+                
+                return result.data;
+            } catch (error) {
+                console.error('Sync error:', error);
+                // If function doesn't exist, show manual instructions
+                if (error.code === 'functions/not-found') {
+                    showManualInstructions(downloadURL, filename);
+                    return { success: false, error: 'Auto-sync not available' };
+                }
+                return { success: false, error: error.message };
+            }
+        }
+        
+        function showManualInstructions(downloadURL, filename) {
+            const instructions = `
+                <h4>Manual Sync Instructions:</h4>
+                <p>Auto-sync is not set up yet. To use this LoRA:</p>
+                <ol>
+                    <li>SSH into your RunPod pod</li>
+                    <li>Run this command:</li>
+                </ol>
+                <div class="code-block">wget -O /workspace/ComfyUI/models/loras/${filename} "${downloadURL}"</div>
+                <button onclick="navigator.clipboard.writeText('wget -O /workspace/ComfyUI/models/loras/${filename} \\'${downloadURL}\\'')">Copy Command</button>
+            `;
+            statusEl.innerHTML += instructions;
+        }
+        
+        async function loadUserLoras() {
+            try {
+                const snapshot = await db.collection('user_loras')
+                    .where('userId', '==', auth.currentUser.uid)
+                    .orderBy('uploadedAt', 'desc')
+                    .get();
+                
+                if (snapshot.empty) {
+                    loraListEl.innerHTML = '<p style="color: #666;">No LoRAs uploaded yet</p>';
+                    return;
+                }
+                
+                let html = '';
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const isSynced = data.syncedToRunPod || false;
+                    
+                    html += `
+                        <div class="lora-item ${isSynced ? 'synced' : ''}">
+                            <div>
+                                <strong>${data.filename}</strong>
+                                <div class="sync-status ${isSynced ? 'synced' : ''}">
+                                    ${isSynced ? '✅ Synced to RunPod' : '⏳ Not synced'}
+                                </div>
+                            </div>
+                            <div>
+                                ${!isSynced ? `<button onclick="manualSync('${doc.id}', '${data.downloadURL}', '${data.filename}')">Sync Now</button>` : ''}
+                                <button onclick="copyUsage('${data.filename}')">Copy Usage</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                loraListEl.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading LoRAs:', error);
+            }
+        }
+        
+        async function manualSync(docId, downloadURL, filename) {
+            showStatus(`Syncing ${filename} to RunPod...`, 'loading');
+            const result = await syncLoraToRunPod(downloadURL, filename, docId);
+            
+            if (result.success) {
+                // Update Firestore
+                await db.collection('user_loras').doc(docId).update({
+                    syncedToRunPod: true,
+                    syncStatus: 'completed'
+                });
+                showStatus(`✅ ${filename} synced successfully!`, 'success');
+                loadUserLoras();
+            } else {
+                showStatus(`Sync failed: ${result.error}`, 'error');
+            }
+        }
+        
+        function copyUsage(filename) {
+            const usage = `"lora_name": "${filename.replace('.safetensors', '')}", "lora_strength": 0.8`;
+            navigator.clipboard.writeText(usage);
+            showStatus('Usage copied to clipboard!', 'success');
+            setTimeout(() => statusEl.style.display = 'none', 2000);
+        }
+        
+        function showStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>

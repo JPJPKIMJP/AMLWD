@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recover Lost Images - AMLWD</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .lost-image {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            background: #fffbf0;
+            border-radius: 4px;
+        }
+        .recovered {
+            background: #f0fff0;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Image Recovery Tool</h1>
+        <p>This tool helps find and recover lost generated images.</p>
+        
+        <button onclick="findLostImages()">Find Lost Images</button>
+        <button onclick="recoverFromLogs()">Recover from Generation Logs</button>
+        <button onclick="fixMissingTimestamps()">Fix Missing Timestamps</button>
+        <button onclick="forceRefreshHistory()">Force Refresh History</button>
+        
+        <div id="status" style="margin: 20px 0; font-weight: bold;"></div>
+        <div id="results"></div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD5nLmrmT3hW3j74s2bY3MrWzhVLYPvFiA",
+            authDomain: "amlwd-image-gen.firebaseapp.com",
+            projectId: "amlwd-image-gen",
+            storageBucket: "amlwd-image-gen.firebasestorage.app",
+            messagingSenderId: "206782178649",
+            appId: "1:206782178649:web:7abe4d0ee973c2b2e96c10"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+        
+        function setStatus(msg, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = msg;
+            status.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+        }
+        
+        async function findLostImages() {
+            setStatus('Searching for lost images...');
+            const results = document.getElementById('results');
+            results.innerHTML = '';
+            
+            const userId = auth.currentUser?.uid;
+            if (!userId) {
+                setStatus('Please sign in first', 'error');
+                return;
+            }
+            
+            try {
+                // Get generation logs
+                const generationsSnapshot = await db.collection('image_generations')
+                    .where('userId', '==', userId)
+                    .where('success', '==', true)
+                    .orderBy('timestamp', 'desc')
+                    .limit(100)
+                    .get();
+                
+                // Get saved images
+                const imagesSnapshot = await db.collection('user_images')
+                    .where('userId', '==', userId)
+                    .get();
+                
+                const savedPrompts = new Set();
+                const savedUrls = new Set();
+                imagesSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    savedPrompts.add(data.prompt);
+                    if (data.imageUrl) savedUrls.add(data.imageUrl);
+                });
+                
+                let lostCount = 0;
+                let html = '<h3>Lost Images:</h3>';
+                
+                generationsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!savedPrompts.has(data.prompt)) {
+                        lostCount++;
+                        const timestamp = data.timestamp?.toDate() || new Date();
+                        html += `
+                            <div class="lost-image" data-doc-id="${doc.id}">
+                                <strong>Prompt:</strong> ${data.prompt}<br>
+                                <strong>Generated:</strong> ${timestamp.toLocaleString()}<br>
+                                <strong>Size:</strong> ${data.width}x${data.height}<br>
+                                <strong>Processing Time:</strong> ${data.processingTime}ms<br>
+                                ${data.savedImageUrls?.length > 0 ? 
+                                    `<strong>Saved URLs:</strong> ${data.savedImageUrls.join(', ')}<br>
+                                     <button onclick="recoverSingleImage('${doc.id}')">Recover This Image</button>` : 
+                                    '<em>No saved URLs found</em>'}
+                            </div>
+                        `;
+                    }
+                });
+                
+                if (lostCount === 0) {
+                    html = '<p>✅ No lost images found! All generated images are in history.</p>';
+                } else {
+                    html = `<p>Found ${lostCount} lost images:</p>` + html;
+                }
+                
+                results.innerHTML = html;
+                setStatus(`Found ${lostCount} lost images`, lostCount > 0 ? 'warning' : 'success');
+                
+            } catch (error) {
+                setStatus('Error: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+        
+        async function recoverSingleImage(docId) {
+            try {
+                const doc = await db.collection('image_generations').doc(docId).get();
+                const data = doc.data();
+                
+                if (data.savedImageUrls && data.savedImageUrls.length > 0) {
+                    await db.collection('user_images').add({
+                        userId: data.userId,
+                        userEmail: data.userEmail,
+                        prompt: data.prompt,
+                        imageUrl: data.savedImageUrls[0],
+                        fileName: `recovered_${Date.now()}.png`,
+                        size: 0,
+                        timestamp: data.timestamp,
+                        metadata: {
+                            width: data.width,
+                            height: data.height,
+                            steps: data.steps,
+                            guidanceScale: data.guidanceScale,
+                            recovered: true,
+                            recoveredFrom: docId
+                        }
+                    });
+                    
+                    document.querySelector(`[data-doc-id="${docId}"]`).classList.add('recovered');
+                    setStatus('Image recovered successfully!', 'success');
+                }
+            } catch (error) {
+                setStatus('Recovery error: ' + error.message, 'error');
+            }
+        }
+        
+        async function recoverFromLogs() {
+            setStatus('Recovering all images with saved URLs...');
+            
+            const userId = auth.currentUser?.uid;
+            if (!userId) {
+                setStatus('Please sign in first', 'error');
+                return;
+            }
+            
+            try {
+                const generationsSnapshot = await db.collection('image_generations')
+                    .where('userId', '==', userId)
+                    .where('success', '==', true)
+                    .get();
+                
+                const imagesSnapshot = await db.collection('user_images')
+                    .where('userId', '==', userId)
+                    .get();
+                
+                const savedPrompts = new Set();
+                imagesSnapshot.forEach(doc => {
+                    savedPrompts.add(doc.data().prompt);
+                });
+                
+                let recovered = 0;
+                const batch = db.batch();
+                
+                generationsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!savedPrompts.has(data.prompt) && data.savedImageUrls?.length > 0) {
+                        const imageRef = db.collection('user_images').doc();
+                        batch.set(imageRef, {
+                            userId: data.userId,
+                            userEmail: data.userEmail,
+                            prompt: data.prompt,
+                            imageUrl: data.savedImageUrls[0],
+                            fileName: `recovered_${Date.now()}_${recovered}.png`,
+                            size: 0,
+                            timestamp: data.timestamp,
+                            metadata: {
+                                width: data.width,
+                                height: data.height,
+                                steps: data.steps,
+                                guidanceScale: data.guidanceScale,
+                                recovered: true
+                            }
+                        });
+                        recovered++;
+                    }
+                });
+                
+                if (recovered > 0) {
+                    await batch.commit();
+                    setStatus(`✅ Recovered ${recovered} images!`, 'success');
+                    document.getElementById('results').innerHTML = 
+                        `<p>Successfully recovered ${recovered} images. <a href="/">Go to main page</a> to see them.</p>`;
+                } else {
+                    setStatus('No images to recover', 'info');
+                }
+                
+            } catch (error) {
+                setStatus('Error: ' + error.message, 'error');
+            }
+        }
+        
+        async function fixMissingTimestamps() {
+            setStatus('Fixing missing timestamps...');
+            
+            const userId = auth.currentUser?.uid;
+            if (!userId) {
+                setStatus('Please sign in first', 'error');
+                return;
+            }
+            
+            try {
+                const snapshot = await db.collection('user_images')
+                    .where('userId', '==', userId)
+                    .get();
+                
+                let fixed = 0;
+                const batch = db.batch();
+                
+                snapshot.forEach(doc => {
+                    if (!doc.data().timestamp) {
+                        batch.update(doc.ref, {
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        fixed++;
+                    }
+                });
+                
+                if (fixed > 0) {
+                    await batch.commit();
+                    setStatus(`✅ Fixed ${fixed} images with missing timestamps`, 'success');
+                } else {
+                    setStatus('All images have timestamps', 'success');
+                }
+                
+            } catch (error) {
+                setStatus('Error: ' + error.message, 'error');
+            }
+        }
+        
+        async function forceRefreshHistory() {
+            setStatus('Force refreshing history...');
+            
+            try {
+                // Clear any cached data
+                localStorage.removeItem('imageHistory');
+                localStorage.removeItem('lastImageDoc');
+                
+                // Go to main page
+                window.location.href = '/';
+                
+            } catch (error) {
+                setStatus('Error: ' + error.message, 'error');
+            }
+        }
+        
+        // Auto sign-in check
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                setStatus('Ready. Click a button to start.');
+            } else {
+                setStatus('Please sign in on the main page first', 'error');
+            }
+        });
+    </script>
+</body>
+</html>

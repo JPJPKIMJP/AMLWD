@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Firebase Functions</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>Test Firebase Functions</h1>
+    <button onclick="testFunctions()">Test All Functions</button>
+    <pre id="results"></pre>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD5nLmrmT3hW3j74s2bY3MrWzhVLYPvFiA",
+            authDomain: "amlwd-image-gen.firebaseapp.com",
+            projectId: "amlwd-image-gen",
+            storageBucket: "amlwd-image-gen.firebasestorage.app",
+            messagingSenderId: "206782178649",
+            appId: "1:206782178649:web:7abe4d0ee973c2b2e96c10"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const functions = firebase.functions();
+        const auth = firebase.auth();
+        
+        async function testFunctions() {
+            const results = document.getElementById('results');
+            results.textContent = 'Testing...\n\n';
+            
+            // Sign in anonymously for testing
+            try {
+                await auth.signInAnonymously();
+                results.textContent += '✅ Signed in anonymously\n\n';
+            } catch (error) {
+                results.textContent += '❌ Auth error: ' + error.message + '\n\n';
+            }
+            
+            // Test each function
+            const functionsToTest = [
+                'healthCheck',
+                'getUserImages', 
+                'syncLoraToRunPod',
+                'deployLoraToRunPod'
+            ];
+            
+            for (const funcName of functionsToTest) {
+                try {
+                    if (funcName === 'healthCheck') {
+                        const response = await fetch('https://us-central1-amlwd-image-gen.cloudfunctions.net/healthCheck');
+                        const data = await response.json();
+                        results.textContent += `✅ ${funcName}: ${JSON.stringify(data)}\n`;
+                    } else {
+                        const func = functions.httpsCallable(funcName);
+                        const result = await func({ test: true });
+                        results.textContent += `✅ ${funcName}: Accessible\n`;
+                    }
+                } catch (error) {
+                    results.textContent += `❌ ${funcName}: ${error.message}\n`;
+                }
+            }
+        }
+    </script>
+</body>
+</html>

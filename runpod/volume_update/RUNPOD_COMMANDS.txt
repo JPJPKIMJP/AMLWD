@@ -1,0 +1,19 @@
+# RunPod Commands - Copy and run these in your RunPod terminal
+
+cd /workspace  # or /runpod-volume if that's your volume location
+
+# Download the updated handler with LoRA support
+wget -O flux_handler.py https://gist.githubusercontent.com/anonymous/temp/raw/flux_handler.py
+
+# Download the LoRA workflow
+wget -O flux_with_lora.json https://gist.githubusercontent.com/anonymous/temp/raw/flux_with_lora.json
+
+# Download the updated start script
+wget -O start_volume.sh https://gist.githubusercontent.com/anonymous/temp/raw/start_volume.sh
+chmod +x start_volume.sh
+
+# Test that files were downloaded
+ls -la flux_handler.py flux_with_lora.json start_volume.sh
+
+# IMPORTANT: After downloading, update your endpoint's Container Start Command to:
+# /workspace/start_volume.sh

@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoRA Upload - AMLWD</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 40px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            padding: 60px 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            background: #0f0f0f;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #764ba2;
+            background: #1a1a1a;
+            transform: scale(1.02);
+        }
+        
+        .upload-area h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+        
+        .upload-area p {
+            color: #888;
+        }
+        
+        #file-input {
+            display: none;
+        }
+        
+        .file-info {
+            display: none;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .file-info h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .file-details {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px;
+            color: #ccc;
+        }
+        
+        .file-details .label {
+            color: #888;
+        }
+        
+        .upload-button {
+            display: none;
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .upload-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .progress {
+            display: none;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #888;
+        }
+        
+        .status {
+            display: none;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .status.success {
+            background: #0f3f0f;
+            border: 1px solid #0f5f0f;
+            color: #4ade80;
+        }
+        
+        .status.error {
+            background: #3f0f0f;
+            border: 1px solid #5f0f0f;
+            color: #f87171;
+        }
+        
+        .instructions {
+            display: none;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .instructions h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .command {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #4ade80;
+            margin: 10px 0;
+            word-break: break-all;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .command:hover {
+            background: #222;
+        }
+        
+        .copy-hint {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            font-size: 0.8rem;
+        }
+        
+        .existing-loras {
+            margin-top: 40px;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .existing-loras h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .lora-list {
+            display: grid;
+            gap: 10px;
+        }
+        
+        .lora-item {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .lora-name {
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .usage-example {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: #888;
+        }
+        
+        .admin-section {
+            display: none;
+            background: #1f0f2f;
+            border: 1px solid #4a0080;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .admin-section h4 {
+            color: #a855f7;
+            margin-bottom: 15px;
+        }
+        
+        .auto-deploy-btn {
+            background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .auto-deploy-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
+        }
+        
+        .auto-deploy-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .back-link:hover {
+            color: #764ba2;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="main-container" style="display: none;">
+        <a href="/" class="back-link">← Back to Image Generator</a>
+        
+        <h1>LoRA Upload</h1>
+        <p class="subtitle">Upload LoRA models to your RunPod instance</p>
+        
+        <div class="upload-area" id="upload-area">
+            <h3>📁 Drop your LoRA file here</h3>
+            <p>or click to browse</p>
+            <p style="margin-top: 10px; font-size: 0.9rem;">Supports .safetensors files</p>
+        </div>
+        
+        <input type="file" id="file-input" accept=".safetensors">
+        
+        <div class="file-info" id="file-info">
+            <h4>Selected File</h4>
+            <div class="file-details">
+                <span class="label">Name:</span>
+                <span id="file-name"></span>
+                <span class="label">Size:</span>
+                <span id="file-size"></span>
+            </div>
+        </div>
+        
+        <button class="upload-button" id="upload-button">Upload to Firebase</button>
+        
+        <div class="progress" id="progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-text" id="progress-text">Uploading...</div>
+        </div>
+        
+        <div class="status" id="status"></div>
+        
+        <div class="instructions" id="instructions">
+            <h4>📋 Installation Instructions</h4>
+            <p style="margin-bottom: 15px; color: #888;">SSH into your RunPod pod and run this command:</p>
+            <div class="command" id="wget-command" onclick="copyCommand()">
+                <span id="command-text"></span>
+                <span class="copy-hint">Click to copy</span>
+            </div>
+            <p style="margin-top: 15px; color: #888;">The LoRA will be downloaded to: <code>/workspace/ComfyUI/models/loras/</code></p>
+        </div>
+        
+        <div class="admin-section" id="admin-section">
+            <h4>🔧 Admin Tools</h4>
+            <p style="margin-bottom: 15px; color: #ccc;">Automatically deploy this LoRA to RunPod</p>
+            <button class="auto-deploy-btn" id="auto-deploy-btn" onclick="autoDeployToRunPod()">
+                Auto-Deploy to RunPod
+            </button>
+            <div id="deploy-status" style="margin-top: 15px; color: #a855f7;"></div>
+        </div>
+        
+        <div class="existing-loras">
+            <h4>📂 Your LoRAs</h4>
+            <div id="lora-list" class="lora-list">
+                <p style="color: #666;">Upload a LoRA to see it listed here</p>
+            </div>
+            <div class="usage-example">
+                <strong>To use in generation:</strong><br>
+                {<br>
+                &nbsp;&nbsp;"lora_name": "your_lora.safetensors",<br>
+                &nbsp;&nbsp;"lora_strength": 0.8<br>
+                }
+            </div>
+        </div>
+    </div>
+    
+    <div class="container loading" id="loading-container">
+        <h2>Loading...</h2>
+        <p>Checking authentication</p>
+    </div>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+    
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDQQhzQZlgCBgtH5PGGYnHlYDGfEUOfbq0",
+            authDomain: "amlwd-image-gen.firebaseapp.com",
+            projectId: "amlwd-image-gen",
+            storageBucket: "amlwd-image-gen.appspot.com",
+            messagingSenderId: "837729531658",
+            appId: "1:837729531658:web:e2ddcfd99dab1d0eb4f709"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const storage = firebase.storage();
+        const firestore = firebase.firestore();
+        
+        // Elements
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const fileInfo = document.getElementById('file-info');
+        const uploadButton = document.getElementById('upload-button');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const status = document.getElementById('status');
+        const instructions = document.getElementById('instructions');
+        const commandText = document.getElementById('command-text');
+        const loraList = document.getElementById('lora-list');
+        
+        let selectedFile = null;
+        let uploadedLoras = [];
+        let currentLoraUrl = null;
+        let currentLoraName = null;
+        let isAdmin = false;
+        
+        // Check authentication with a small delay to ensure Firebase is ready
+        let authChecked = false;
+        auth.onAuthStateChanged(async (user) => {
+            if (authChecked) return; // Prevent multiple checks
+            authChecked = true;
+            
+            if (!user) {
+                // Give Firebase a moment to check persistent auth
+                setTimeout(() => {
+                    if (!auth.currentUser) {
+                        window.location.href = '/';
+                    }
+                }, 1000);
+            } else {
+                // User is authenticated, show the main content
+                document.getElementById('loading-container').style.display = 'none';
+                document.getElementById('main-container').style.display = 'block';
+                loadUploadedLoras();
+                // Check if user is admin
+                try {
+                    const adminDoc = await firestore.collection('admins').doc(user.uid).get();
+                    isAdmin = adminDoc.exists && adminDoc.data()?.isAdmin === true;
+                    if (isAdmin) {
+                        console.log('Admin user detected');
+                    }
+                } catch (error) {
+                    console.error('Error checking admin status:', error);
+                }
+            }
+        });
+        
+        // File selection
+        uploadArea.onclick = () => fileInput.click();
+        
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file && file.name.endsWith('.safetensors')) {
+                selectedFile = file;
+                document.getElementById('file-name').textContent = file.name;
+                document.getElementById('file-size').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+                fileInfo.style.display = 'block';
+                uploadButton.style.display = 'block';
+            } else {
+                showStatus('Please select a .safetensors file', 'error');
+            }
+        };
+        
+        // Drag and drop
+        uploadArea.ondragover = (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        };
+        
+        uploadArea.ondragleave = () => {
+            uploadArea.classList.remove('dragover');
+        };
+        
+        uploadArea.ondrop = (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.safetensors')) {
+                selectedFile = file;
+                document.getElementById('file-name').textContent = file.name;
+                document.getElementById('file-size').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+                fileInfo.style.display = 'block';
+                uploadButton.style.display = 'block';
+            } else {
+                showStatus('Please select a .safetensors file', 'error');
+            }
+        };
+        
+        // Upload button
+        uploadButton.onclick = async () => {
+            if (!selectedFile) return;
+            
+            uploadButton.disabled = true;
+            progress.style.display = 'block';
+            status.style.display = 'none';
+            instructions.style.display = 'none';
+            
+            try {
+                // Create a unique path
+                const timestamp = Date.now();
+                const safeName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                const storagePath = `loras/${timestamp}_${safeName}`;
+                
+                // Upload to Firebase Storage
+                const storageRef = storage.ref(storagePath);
+                const uploadTask = storageRef.put(selectedFile);
+                
+                uploadTask.on('state_changed', 
+                    (snapshot) => {
+                        // Progress
+                        const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        progressFill.style.width = percent + '%';
+                        progressText.textContent = `Uploading... ${percent.toFixed(0)}%`;
+                    },
+                    (error) => {
+                        // Error
+                        console.error('Upload error:', error);
+                        showStatus('Upload failed: ' + error.message, 'error');
+                        uploadButton.disabled = false;
+                        progress.style.display = 'none';
+                    },
+                    async () => {
+                        // Complete
+                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                        
+                        // Save to Firestore
+                        await firestore.collection('user_loras').add({
+                            userId: auth.currentUser.uid,
+                            filename: selectedFile.name,
+                            storagePath: storagePath,
+                            downloadURL: downloadURL,
+                            size: selectedFile.size,
+                            uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        showStatus('Upload successful!', 'success');
+                        showInstructions(downloadURL, selectedFile.name);
+                        
+                        // Reset
+                        setTimeout(() => {
+                            fileInfo.style.display = 'none';
+                            uploadButton.style.display = 'none';
+                            progress.style.display = 'none';
+                            progressFill.style.width = '0%';
+                            fileInput.value = '';
+                            selectedFile = null;
+                        }, 1000);
+                        
+                        uploadButton.disabled = false;
+                        loadUploadedLoras();
+                    }
+                );
+            } catch (error) {
+                console.error('Upload error:', error);
+                showStatus('Upload failed: ' + error.message, 'error');
+                uploadButton.disabled = false;
+                progress.style.display = 'none';
+            }
+        };
+        
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        function showInstructions(downloadURL, filename) {
+            const command = `wget -O /workspace/ComfyUI/models/loras/${filename} "${downloadURL}"`;
+            commandText.textContent = command;
+            instructions.style.display = 'block';
+            
+            // Store for admin use
+            currentLoraUrl = downloadURL;
+            currentLoraName = filename;
+            
+            // Show admin section if user is admin
+            if (isAdmin) {
+                document.getElementById('admin-section').style.display = 'block';
+                document.getElementById('deploy-status').textContent = '';
+            }
+        }
+        
+        function copyCommand() {
+            const command = commandText.textContent;
+            navigator.clipboard.writeText(command).then(() => {
+                const hint = document.querySelector('.copy-hint');
+                hint.textContent = 'Copied!';
+                setTimeout(() => {
+                    hint.textContent = 'Click to copy';
+                }, 2000);
+            });
+        }
+        
+        async function loadUploadedLoras() {
+            try {
+                const snapshot = await firestore.collection('user_loras')
+                    .where('userId', '==', auth.currentUser.uid)
+                    .orderBy('uploadedAt', 'desc')
+                    .get();
+                
+                uploadedLoras = [];
+                snapshot.forEach(doc => {
+                    uploadedLoras.push({ id: doc.id, ...doc.data() });
+                });
+                
+                displayLoras();
+            } catch (error) {
+                console.error('Error loading LoRAs:', error);
+            }
+        }
+        
+        function displayLoras() {
+            if (uploadedLoras.length === 0) {
+                loraList.innerHTML = '<p style="color: #666;">No LoRAs uploaded yet</p>';
+            } else {
+                loraList.innerHTML = uploadedLoras.map(lora => `
+                    <div class="lora-item">
+                        <span class="lora-name">${lora.filename}</span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        async function autoDeployToRunPod() {
+            const btn = document.getElementById('auto-deploy-btn');
+            const statusEl = document.getElementById('deploy-status');
+            
+            if (!currentLoraUrl || !currentLoraName) {
+                statusEl.textContent = '❌ No LoRA selected';
+                return;
+            }
+            
+            btn.disabled = true;
+            statusEl.textContent = '⏳ Deploying to RunPod...';
+            
+            try {
+                // Call Firebase function to deploy LoRA
+                const deployLoraToRunPod = firebase.functions().httpsCallable('deployLoraToRunPod');
+                const result = await deployLoraToRunPod({
+                    loraUrl: currentLoraUrl,
+                    loraName: currentLoraName
+                });
+                
+                if (result.data.success) {
+                    statusEl.innerHTML = `✅ Successfully deployed!<br>LoRA is now available on RunPod`;
+                } else {
+                    statusEl.textContent = `❌ Deployment failed: ${result.data.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                console.error('Deploy error:', error);
+                statusEl.textContent = `❌ Error: ${error.message}`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
