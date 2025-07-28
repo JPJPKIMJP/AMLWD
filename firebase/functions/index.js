@@ -6,6 +6,12 @@ admin.initializeApp();
 const RUNPOD_API_KEY = functions.config().runpod?.api_key;
 const RUNPOD_ENDPOINT_ID = functions.config().runpod?.endpoint_id;
 
+// S3 Volume credentials for RunPod (stored in Firebase config)
+const S3_ENDPOINT = functions.config().s3volume?.endpoint || 'https://s3api-us-ks-2.runpod.io';
+const S3_BUCKET = functions.config().s3volume?.bucket || '82elxnhs55';
+const S3_ACCESS_KEY = functions.config().s3volume?.access_key;
+const S3_SECRET_KEY = functions.config().s3volume?.secret_key;
+
 // Constants for validation
 const MAX_PROMPT_LENGTH = 1000;
 const MIN_PROMPT_LENGTH = 3;
@@ -748,6 +754,36 @@ exports.resetRateLimit = functions.https.onCall(async (data, context) => {
     console.error('Reset error:', error);
     throw new functions.https.HttpsError('internal', 'Failed to reset rate limit');
   }
+});
+
+// Get S3 credentials for RunPod - secure endpoint
+exports.getS3Credentials = functions.https.onRequest(async (req, res) => {
+  // Set CORS headers
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+  
+  // Verify the request is from RunPod by checking a shared secret
+  const authHeader = req.headers.authorization;
+  const runpodSecret = functions.config().runpod?.secret || RUNPOD_API_KEY;
+  
+  if (!authHeader || authHeader !== `Bearer ${runpodSecret}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  
+  // Return S3 credentials
+  res.status(200).json({
+    S3_ENDPOINT: S3_ENDPOINT,
+    S3_BUCKET: S3_BUCKET,
+    S3_ACCESS_KEY: S3_ACCESS_KEY,
+    S3_SECRET_KEY: S3_SECRET_KEY
+  });
 });
 
 // Test RunPod endpoint - callable function for testing

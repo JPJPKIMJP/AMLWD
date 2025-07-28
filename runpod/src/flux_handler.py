@@ -62,15 +62,61 @@ else:
 
 # S3 volume client setup for LoRA storage
 s3_volume_client = None
-if os.environ.get('S3_ENDPOINT'):
+s3_credentials = {}
+
+# Try to fetch S3 credentials from Firebase
+def fetch_s3_credentials():
+    """Fetch S3 credentials from Firebase Cloud Function"""
+    try:
+        firebase_url = os.environ.get('FIREBASE_CREDENTIALS_URL', 
+                                    'https://us-central1-amlwd-image-gen.cloudfunctions.net/getS3Credentials')
+        runpod_secret = os.environ.get('RUNPOD_API_KEY', '')
+        
+        logger.info(f"Fetching S3 credentials from Firebase...")
+        response = requests.get(
+            firebase_url,
+            headers={'Authorization': f'Bearer {runpod_secret}'},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            creds = response.json()
+            logger.info("Successfully fetched S3 credentials from Firebase")
+            return creds
+        else:
+            logger.warn(f"Failed to fetch S3 credentials: {response.status_code}")
+            return None
+    except Exception as e:
+        logger.warn(f"Error fetching S3 credentials: {e}")
+        return None
+
+# Try Firebase first, then fall back to environment variables
+firebase_creds = fetch_s3_credentials()
+
+if firebase_creds:
+    s3_credentials = firebase_creds
+    logger.info("Using S3 credentials from Firebase")
+else:
+    # Fall back to environment variables
+    if os.environ.get('S3_ENDPOINT'):
+        s3_credentials = {
+            'S3_ENDPOINT': os.environ.get('S3_ENDPOINT'),
+            'S3_BUCKET': os.environ.get('S3_BUCKET'),
+            'S3_ACCESS_KEY': os.environ.get('S3_ACCESS_KEY'),
+            'S3_SECRET_KEY': os.environ.get('S3_SECRET_KEY')
+        }
+        logger.info("Using S3 credentials from environment variables")
+
+# Setup S3 client if credentials available
+if s3_credentials.get('S3_ENDPOINT') and s3_credentials.get('S3_ACCESS_KEY'):
     logger.info("Setting up S3 volume client for LoRA storage...")
     s3_volume_client = boto3.client(
         's3',
-        endpoint_url=os.environ.get('S3_ENDPOINT'),
-        aws_access_key_id=os.environ.get('S3_ACCESS_KEY'),
-        aws_secret_access_key=os.environ.get('S3_SECRET_KEY')
+        endpoint_url=s3_credentials['S3_ENDPOINT'],
+        aws_access_key_id=s3_credentials['S3_ACCESS_KEY'],
+        aws_secret_access_key=s3_credentials['S3_SECRET_KEY']
     )
-    logger.info(f"S3 volume client configured for bucket: {os.environ.get('S3_BUCKET')}")
+    logger.info(f"S3 volume client configured for bucket: {s3_credentials['S3_BUCKET']}")
 else:
     logger.warn("S3 volume not configured - LoRAs will use local storage")
 
@@ -484,7 +530,7 @@ class FluxHandler:
         try:
             key = f"models/loras/{lora_filename}"
             s3_volume_client.head_object(
-                Bucket=os.environ.get('S3_BUCKET'),
+                Bucket=s3_credentials.get('S3_BUCKET'),
                 Key=key
             )
             logger.info(f"LoRA found in S3: {key}")
@@ -504,7 +550,7 @@ class FluxHandler:
             
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             s3_volume_client.download_file(
-                Bucket=os.environ.get('S3_BUCKET'),
+                Bucket=s3_credentials.get('S3_BUCKET'),
                 Key=key,
                 Filename=local_path
             )
@@ -527,7 +573,7 @@ class FluxHandler:
             
             with open(local_path, 'rb') as f:
                 s3_volume_client.put_object(
-                    Bucket=os.environ.get('S3_BUCKET'),
+                    Bucket=s3_credentials.get('S3_BUCKET'),
                     Key=key,
                     Body=f,
                     ContentType='application/octet-stream'
