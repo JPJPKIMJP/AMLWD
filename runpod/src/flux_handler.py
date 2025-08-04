@@ -110,11 +110,20 @@ else:
 # Setup S3 client if credentials available
 if s3_credentials.get('S3_ENDPOINT') and s3_credentials.get('S3_ACCESS_KEY'):
     logger.info("Setting up S3 volume client for LoRA storage...")
+    from botocore.config import Config
+    
+    config = Config(
+        region_name='US-KS-2',
+        signature_version='s3v4',
+        s3={'addressing_style': 'path'}
+    )
+    
     s3_volume_client = boto3.client(
         's3',
         endpoint_url=s3_credentials['S3_ENDPOINT'],
         aws_access_key_id=s3_credentials['S3_ACCESS_KEY'],
-        aws_secret_access_key=s3_credentials['S3_SECRET_KEY']
+        aws_secret_access_key=s3_credentials['S3_SECRET_KEY'],
+        config=config
     )
     logger.info(f"S3 volume client configured for bucket: {s3_credentials['S3_BUCKET']}")
 else:
