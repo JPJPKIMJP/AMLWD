@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure AMLWD Image Generator v2.1</title>
+    <title>Secure AMLWD Image Generator v2.2.1</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -516,9 +516,9 @@
                         params.lora_name = loraSelect.value;
                         params.lora_strength = parseFloat(loraStrength.value);
                         
-                        // Check if this is a custom LoRA and add the URL
+                        // Check if this is a custom LoRA and add the URL (only if not pre-loaded)
                         const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
-                        if (customLoras[loraSelect.value]) {
+                        if (customLoras[loraSelect.value] && !customLoras[loraSelect.value].preloaded) {
                             params.lora_url = customLoras[loraSelect.value].url;
                         }
                     }

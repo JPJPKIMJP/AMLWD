@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Pre-load Function</title>
+</head>
+<body>
+    <h1>Test Pre-load Function</h1>
+    
+    <div id="loras"></div>
+    
+    <button onclick="testPreload()">Test Pre-load Function</button>
+    
+    <div id="result"></div>
+    
+    <script>
+    // Firebase config
+    const firebaseConfig = {
+        apiKey: "AIzaSyBcNvNxNOLW8zVzgO1OhNFzfr0lDor3ud0",
+        authDomain: "amlwd-image-gen.firebaseapp.com",
+        projectId: "amlwd-image-gen",
+        storageBucket: "amlwd-image-gen.firebasestorage.app",
+        messagingSenderId: "402827177676",
+        appId: "1:402827177676:web:eaa6fc5165af0f91bd9c69"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const functions = firebase.functions();
+    
+    // Show current LoRAs
+    const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+    let html = '<h2>Your LoRAs:</h2><ul>';
+    for (const [key, lora] of Object.entries(customLoras)) {
+        html += `<li>${lora.name} - Preloaded: ${lora.preloaded ? 'Yes' : 'No'}</li>`;
+    }
+    html += '</ul>';
+    document.getElementById('loras').innerHTML = html;
+    
+    async function testPreload() {
+        const user = auth.currentUser;
+        if (!user) {
+            alert('Please log in first');
+            return;
+        }
+        
+        // Get the first LoRA that's not preloaded
+        let testLora = null;
+        for (const [key, lora] of Object.entries(customLoras)) {
+            if (!lora.preloaded && lora.url) {
+                testLora = { key, ...lora };
+                break;
+            }
+        }
+        
+        if (!testLora) {
+            alert('No un-preloaded LoRAs found');
+            return;
+        }
+        
+        document.getElementById('result').innerHTML = `Testing pre-load for: ${testLora.name}...`;
+        
+        try {
+            const preloadToS3 = functions.httpsCallable('preloadLoraToS3');
+            const result = await preloadToS3({
+                loraUrl: testLora.url,
+                loraName: testLora.key
+            });
+            
+            document.getElementById('result').innerHTML = `<pre>${JSON.stringify(result.data, null, 2)}</pre>`;
+            
+            if (result.data.success) {
+                // Update localStorage
+                customLoras[testLora.key].preloaded = true;
+                customLoras[testLora.key].s3Key = result.data.s3Key;
+                localStorage.setItem('customLoras', JSON.stringify(customLoras));
+                alert('Pre-load successful!');
+            }
+            
+        } catch (error) {
+            document.getElementById('result').innerHTML = `<pre style="color: red;">Error: ${error.message}\n${JSON.stringify(error, null, 2)}</pre>`;
+            console.error('Full error:', error);
+        }
+    }
+    
+    // Auto-login status
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            document.getElementById('result').innerHTML = `Logged in as: ${user.email}`;
+        } else {
+            document.getElementById('result').innerHTML = 'Not logged in - please log in at main app first';
+        }
+    });
+    </script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+</body>
+</html>

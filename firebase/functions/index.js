@@ -708,15 +708,16 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
   res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '2.1.0-storage',  // Updated: Firebase Storage for image history
+    version: '2.2.1',  // Fixed: Don't send URLs for pre-loaded LoRAs
     deployedAt: new Date().toISOString(),
     features: [
-      'SDXL model support',
+      'FLUX model support',
       'Admin rate limit bypass',
       'Firebase Storage integration',
-      'Cloud-based image history',
-      'Automatic image upload',
-      'No localStorage limits'
+      'RunPod S3 volume integration',
+      'Automatic LoRA pre-loading',
+      'Pre-installed LoRAs support',
+      'No download delays for pre-loaded LoRAs'
     ]
   });
 });
