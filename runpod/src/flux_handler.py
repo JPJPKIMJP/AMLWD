@@ -644,8 +644,8 @@ def runpod_handler(job):
                     s3_uploaded = False
                     logger.warn("S3 upload failed or not configured")
                 
-                # Also copy to local workspace for immediate use
-                local_path = f"/workspace/ComfyUI/models/loras/{lora_name}"
+                # Copy to S3 volume path for persistence
+                local_path = f"/runpod-volume/ComfyUI/models/loras/{lora_name}"
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
                 os.rename(temp_path, local_path)
                 
@@ -680,11 +680,11 @@ def runpod_handler(job):
             else:
                 lora_filename = lora_name
             
-            # Try to download the LoRA
+            # Try to download the LoRA - prioritize S3 volume path
             lora_paths = [
-                f"/workspace/ComfyUI/models/loras/{lora_filename}",
-                f"/ComfyUI/models/loras/{lora_filename}",
-                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
+                f"/runpod-volume/ComfyUI/models/loras/{lora_filename}",  # S3 volume (persistent)
+                f"/workspace/ComfyUI/models/loras/{lora_filename}",      # Workspace (temporary)
+                f"/ComfyUI/models/loras/{lora_filename}"                 # Local (temporary)
             ]
             
             # Check if already exists
@@ -784,9 +784,9 @@ def runpod_handler(job):
             else:
                 # Check local paths
                 lora_paths = [
-                    f"/ComfyUI/models/loras/{lora_filename}",
+                    f"/runpod-volume/ComfyUI/models/loras/{lora_filename}",  # Check S3 volume first
                     f"/workspace/ComfyUI/models/loras/{lora_filename}",
-                    f"/runpod-volume/ComfyUI/models/loras/{lora_filename}"
+                    f"/ComfyUI/models/loras/{lora_filename}"
                 ]
                 
                 for path in lora_paths:
