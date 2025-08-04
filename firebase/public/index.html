@@ -964,9 +964,25 @@
             // Clear current options
             select.innerHTML = '<option value="none">None</option>';
             
-            // Add custom LoRAs only
-            for (const [key, data] of Object.entries(customLoras)) {
-                select.innerHTML += `<option value="${key}">${data.name}</option>`;
+            // Add pre-installed LoRAs
+            const preinstalledLoras = [
+                { value: 'mix4', name: 'Mix4' },
+                { value: 'NSFW_V2', name: 'NSFW V2' }
+            ];
+            
+            select.innerHTML += '<optgroup label="Pre-installed LoRAs">';
+            for (const lora of preinstalledLoras) {
+                select.innerHTML += `<option value="${lora.value}">${lora.name}</option>`;
+            }
+            select.innerHTML += '</optgroup>';
+            
+            // Add custom uploaded LoRAs
+            if (Object.keys(customLoras).length > 0) {
+                select.innerHTML += '<optgroup label="Uploaded LoRAs">';
+                for (const [key, data] of Object.entries(customLoras)) {
+                    select.innerHTML += `<option value="${key}">${data.name}</option>`;
+                }
+                select.innerHTML += '</optgroup>';
             }
         }
         

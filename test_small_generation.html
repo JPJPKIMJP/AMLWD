@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Small Image Generation</title>
+</head>
+<body>
+    <h1>Test Small FLUX Generation</h1>
+    <p>This tests with minimal parameters to ensure basic functionality works.</p>
+    
+    <button onclick="testGeneration()">Test Generation (512x512, 10 steps)</button>
+    
+    <div id="status"></div>
+    <div id="result"></div>
+    
+    <script>
+    // Your Firebase config
+    const firebaseConfig = {
+        apiKey: "AIzaSyBcNvNxNOLW8zVzgO1OhNFzfr0lDor3ud0",
+        authDomain: "amlwd-image-gen.firebaseapp.com",
+        projectId: "amlwd-image-gen",
+        storageBucket: "amlwd-image-gen.firebasestorage.app",
+        messagingSenderId: "402827177676",
+        appId: "1:402827177676:web:eaa6fc5165af0f91bd9c69"
+    };
+    
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const functions = firebase.functions();
+    
+    async function testGeneration() {
+        const statusDiv = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
+        
+        statusDiv.innerHTML = 'Checking authentication...';
+        
+        // Check if user is logged in
+        const user = auth.currentUser;
+        if (!user) {
+            statusDiv.innerHTML = 'Please log in first at https://amlwd-image-gen.web.app/';
+            return;
+        }
+        
+        statusDiv.innerHTML = 'Starting test generation...';
+        
+        try {
+            const generateImage = functions.httpsCallable('generateImageSecure');
+            
+            const startTime = Date.now();
+            statusDiv.innerHTML = 'Calling Firebase function...';
+            
+            const result = await generateImage({
+                prompt: "a simple red circle on white background",
+                width: 512,
+                height: 512,
+                steps: 10,
+                guidance_scale: 7.5
+            });
+            
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+            
+            if (result.data.success && result.data.image) {
+                statusDiv.innerHTML = `Success! Generated in ${duration} seconds`;
+                resultDiv.innerHTML = `<img src="data:image/png;base64,${result.data.image}" style="max-width: 512px;">`;
+            } else {
+                statusDiv.innerHTML = `Generation completed in ${duration}s but no image returned`;
+                resultDiv.innerHTML = `<pre>${JSON.stringify(result.data, null, 2)}</pre>`;
+            }
+            
+        } catch (error) {
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+            statusDiv.innerHTML = `Error after ${duration} seconds: ${error.message}`;
+            console.error('Full error:', error);
+            
+            if (error.message.includes('CORS')) {
+                statusDiv.innerHTML += '<br>CORS error usually means the function timed out.';
+            }
+        }
+    }
+    
+    // Auto-login status
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            document.getElementById('status').innerHTML = `Logged in as: ${user.email}`;
+        } else {
+            document.getElementById('status').innerHTML = 'Not logged in - please visit main app first';
+        }
+    });
+    </script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+</body>
+</html>

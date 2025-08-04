@@ -537,7 +537,7 @@ class FluxHandler:
             return False
         
         try:
-            key = f"models/loras/{lora_filename}"
+            key = f"ComfyUI/models/loras/{lora_filename}"
             s3_volume_client.head_object(
                 Bucket=s3_credentials.get('S3_BUCKET'),
                 Key=key
@@ -554,7 +554,7 @@ class FluxHandler:
             return False
         
         try:
-            key = f"models/loras/{lora_filename}"
+            key = f"ComfyUI/models/loras/{lora_filename}"
             logger.info(f"Downloading LoRA from S3: {key} to {local_path}")
             
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
@@ -577,7 +577,7 @@ class FluxHandler:
             return False
         
         try:
-            key = f"models/loras/{lora_filename}"
+            key = f"ComfyUI/models/loras/{lora_filename}"
             logger.info(f"Uploading LoRA to S3: {local_path} -> {key}")
             
             with open(local_path, 'rb') as f:

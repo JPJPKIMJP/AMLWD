@@ -285,7 +285,7 @@ exports.generateImageSecure = functions
       clearTimeout(timeoutId);
     });
 
-    const result = await response.json();
+    let result = await response.json();
     console.log('RunPod initial response:', JSON.stringify(result));
 
     if (!response.ok) {
