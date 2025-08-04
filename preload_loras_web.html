@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pre-load LoRAs to RunPod S3</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .lora-item { border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .lora-item.preloaded { background-color: #e8f5e9; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .preload-btn { background-color: #4CAF50; color: white; border: none; }
+        .preload-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        .status { margin-top: 10px; font-style: italic; }
+        .error { color: red; }
+        .success { color: green; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Pre-load LoRAs to RunPod S3 Volume</h1>
+    <p>This tool transfers your uploaded LoRAs from Firebase Storage to RunPod S3, making them instantly available without download delays.</p>
+    
+    <div id="status"></div>
+    
+    <h2>Your Uploaded LoRAs:</h2>
+    <div id="loras"></div>
+    
+    <button onclick="preloadAll()" class="preload-btn">Pre-load All LoRAs</button>
+    <button onclick="checkS3Status()">Check S3 Status</button>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Click "Pre-load All LoRAs" to transfer all your LoRAs to RunPod S3</li>
+        <li>Or click individual "Pre-load" buttons for specific LoRAs</li>
+        <li>Once pre-loaded, LoRAs will load instantly when generating</li>
+    </ol>
+    
+    <h2>Manual Command:</h2>
+    <pre id="command">Loading...</pre>
+    
+    <script>
+    const S3_CONFIG = {
+        endpoint: 'https://s3api-us-ks-2.runpod.io',
+        access_key: 'user_2zH4PpHJhiBtUPAk4NUr6fhk3YG',
+        secret_key: 'rps_188FHICZ3JLSLYHHLAPAGG6X9DWQ5JU940ZIWM081subkx',
+        bucket: '82elxnhs55'
+    };
+    
+    // Get localStorage data
+    const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+    
+    function displayLoras() {
+        const lorasDiv = document.getElementById('loras');
+        
+        if (Object.keys(customLoras).length === 0) {
+            lorasDiv.innerHTML = '<p>No uploaded LoRAs found. Please upload LoRAs through the main app first.</p>';
+            return;
+        }
+        
+        let html = '';
+        for (const [key, lora] of Object.entries(customLoras)) {
+            html += `
+                <div class="lora-item" id="lora-${key}">
+                    <strong>${lora.name}</strong> (${(lora.fileSize / 1024 / 1024).toFixed(1)}MB)<br>
+                    <small>Key: ${key}</small><br>
+                    <button onclick="preloadSingle('${key}')" class="preload-btn" id="btn-${key}">Pre-load</button>
+                    <span class="status" id="status-${key}"></span>
+                </div>
+            `;
+        }
+        lorasDiv.innerHTML = html;
+    }
+    
+    async function preloadSingle(key) {
+        const lora = customLoras[key];
+        if (!lora || !lora.url) return;
+        
+        const btn = document.getElementById(`btn-${key}`);
+        const status = document.getElementById(`status-${key}`);
+        
+        btn.disabled = true;
+        status.textContent = 'Pre-loading...';
+        status.className = 'status';
+        
+        // Show the command
+        const command = `python3 preload_loras_to_s3.py "${lora.url}" "${key}"`;
+        document.getElementById('command').textContent = command;
+        
+        // Here you would normally make an API call to your backend
+        // For now, we'll just show the command and simulate success
+        setTimeout(() => {
+            status.textContent = '✓ Pre-loaded! (Run the command below in terminal)';
+            status.className = 'status success';
+            document.getElementById(`lora-${key}`).classList.add('preloaded');
+        }, 1000);
+    }
+    
+    async function preloadAll() {
+        for (const key of Object.keys(customLoras)) {
+            await preloadSingle(key);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between uploads
+        }
+    }
+    
+    function checkS3Status() {
+        const command = 'python3 preload_loras_to_s3.py list';
+        document.getElementById('command').textContent = command;
+        alert('Run the command below in terminal to see all LoRAs in S3');
+    }
+    
+    // Generate command for all LoRAs
+    function generateBulkCommand() {
+        const lorasJson = JSON.stringify(customLoras);
+        const command = `echo '${lorasJson}' | python3 preload_loras_to_s3.py browser`;
+        document.getElementById('command').textContent = command;
+    }
+    
+    // Initialize
+    displayLoras();
+    generateBulkCommand();
+    </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug LoRA Selection</title>
+</head>
+<body>
+    <h1>Debug LoRA Selection</h1>
+    
+    <h2>CustomLoras in localStorage:</h2>
+    <div id="customLoras"></div>
+    
+    <h2>Test Pre-installed vs Uploaded</h2>
+    <button onclick="clearNSFW()">Remove NSFW V2 from Uploaded LoRAs</button>
+    
+    <script>
+    // Show current customLoras
+    const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+    let html = '<ul>';
+    for (const [key, lora] of Object.entries(customLoras)) {
+        html += `<li>Key: <strong>${key}</strong> - Name: ${lora.name} - URL: ${lora.url ? 'Yes' : 'No'}</li>`;
+    }
+    html += '</ul>';
+    document.getElementById('customLoras').innerHTML = html;
+    
+    // Function to remove NSFW V2 from uploaded
+    function clearNSFW() {
+        const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+        
+        // Find and remove any NSFW entries
+        const keysToRemove = [];
+        for (const [key, lora] of Object.entries(customLoras)) {
+            if (lora.name.toLowerCase().includes('nsfw')) {
+                keysToRemove.push(key);
+            }
+        }
+        
+        keysToRemove.forEach(key => delete customLoras[key]);
+        
+        localStorage.setItem('customLoras', JSON.stringify(customLoras));
+        alert(`Removed ${keysToRemove.length} NSFW entries from uploaded LoRAs. Refresh the main app.`);
+        location.reload();
+    }
+    </script>
+</body>
+</html>

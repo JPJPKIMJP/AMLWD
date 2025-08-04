@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear All LoRAs</title>
+</head>
+<body>
+    <h1>Clear All LoRAs from LocalStorage</h1>
+    
+    <h2>Current LoRAs:</h2>
+    <div id="current"></div>
+    
+    <button onclick="clearAll()" style="background: red; color: white; padding: 10px; font-size: 16px;">
+        Clear All LoRAs
+    </button>
+    
+    <div id="result"></div>
+    
+    <script>
+    // Show current state
+    function showCurrent() {
+        const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+        const count = Object.keys(customLoras).length;
+        
+        let html = `<p>Found ${count} uploaded LoRAs in localStorage:</p><ul>`;
+        for (const [key, lora] of Object.entries(customLoras)) {
+            html += `<li>${lora.name} (key: ${key})</li>`;
+        }
+        html += '</ul>';
+        
+        document.getElementById('current').innerHTML = html;
+    }
+    
+    // Clear all LoRAs
+    function clearAll() {
+        if (confirm('Are you sure you want to clear all uploaded LoRAs? This cannot be undone.')) {
+            // Clear customLoras
+            localStorage.removeItem('customLoras');
+            
+            // Also clear any other LoRA-related items
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.toLowerCase().includes('lora')) {
+                    keysToRemove.push(key);
+                }
+            }
+            
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            
+            document.getElementById('result').innerHTML = 
+                '<h2 style="color: green;">✅ All LoRAs cleared!</h2>' +
+                '<p>You now have a clean start. The pre-installed LoRAs (mix4, nsfw_v2) will still be available.</p>' +
+                '<p><strong>Please refresh the main app (https://amlwd-image-gen.web.app) to see the changes.</strong></p>';
+            
+            showCurrent();
+        }
+    }
+    
+    // Show current state on load
+    showCurrent();
+    </script>
+</body>
+</html>

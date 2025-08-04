@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check NSFW V2 Upload Status</title>
+</head>
+<body>
+    <h1>Firebase Storage LoRA Check</h1>
+    <div id="status">Checking...</div>
+    <div id="loras"></div>
+    
+    <script>
+    // Firebase config
+    const firebaseConfig = {
+        apiKey: "AIzaSyBcNvNxNOLW8zVzgO1OhNFzfr0lDor3ud0",
+        authDomain: "amlwd-image-gen.firebaseapp.com",
+        projectId: "amlwd-image-gen",
+        storageBucket: "amlwd-image-gen.firebasestorage.app",
+        messagingSenderId: "402827177676",
+        appId: "1:402827177676:web:eaa6fc5165af0f91bd9c69"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const storage = firebase.storage();
+    const auth = firebase.auth();
+    
+    // Check localStorage
+    const customLoras = JSON.parse(localStorage.getItem('customLoras') || '{}');
+    
+    document.getElementById('status').innerHTML = `Found ${Object.keys(customLoras).length} LoRAs in localStorage`;
+    
+    let html = '<h2>LoRAs in localStorage:</h2><ul>';
+    for (const [key, lora] of Object.entries(customLoras)) {
+        html += `<li>
+            <strong>${lora.name}</strong><br>
+            Key: ${key}<br>
+            Size: ${(lora.fileSize / 1024 / 1024).toFixed(2)} MB<br>
+            Uploaded: ${new Date(lora.uploadedAt).toLocaleString()}<br>
+            <button onclick="checkFirebase('${lora.url}')">Check in Firebase</button>
+            <div id="firebase-${key}"></div>
+        </li>`;
+    }
+    html += '</ul>';
+    
+    document.getElementById('loras').innerHTML = html;
+    
+    async function checkFirebase(url) {
+        try {
+            // Try to fetch the URL to see if it exists
+            const response = await fetch(url, { method: 'HEAD' });
+            if (response.ok) {
+                alert('File exists in Firebase Storage!');
+            } else {
+                alert('File not found or access denied');
+            }
+        } catch (error) {
+            alert('Error checking file: ' + error.message);
+        }
+    }
+    
+    // Also list files directly from Firebase Storage
+    auth.onAuthStateChanged(async (user) => {
+        if (user) {
+            document.getElementById('status').innerHTML += `<br>Logged in as: ${user.email}`;
+            
+            // Try to list files
+            try {
+                const listRef = storage.ref('loras');
+                const res = await listRef.listAll();
+                
+                let storageHtml = '<h2>Files in Firebase Storage /loras/:</h2><ul>';
+                for (const item of res.items) {
+                    const metadata = await item.getMetadata();
+                    storageHtml += `<li>${item.name} - ${(metadata.size / 1024 / 1024).toFixed(2)} MB</li>`;
+                }
+                storageHtml += '</ul>';
+                
+                document.getElementById('loras').innerHTML += storageHtml;
+            } catch (error) {
+                console.error('Error listing storage:', error);
+                document.getElementById('loras').innerHTML += '<p>Could not list Firebase Storage (requires auth)</p>';
+            }
+        } else {
+            document.getElementById('status').innerHTML += '<br>Not logged in - please log in at main app first';
+        }
+    });
+    </script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+</body>
+</html>

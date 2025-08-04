@@ -1107,12 +1107,39 @@
                         updateLoraSelect();
                         loadLoraList();
                         
+                        // Pre-load to RunPod S3 automatically
+                        statusText.textContent = 'Pre-loading to RunPod...';
+                        progressBar.style.width = '100%';
+                        
+                        try {
+                            const preloadToS3 = firebase.functions().httpsCallable('preloadLoraToS3');
+                            const preloadResult = await preloadToS3({
+                                loraUrl: downloadURL,
+                                loraName: key
+                            });
+                            
+                            if (preloadResult.data.success) {
+                                console.log('LoRA pre-loaded to S3:', preloadResult.data);
+                                statusText.textContent = 'Pre-loaded to RunPod!';
+                                
+                                // Mark as pre-loaded
+                                customLoras[key].preloaded = true;
+                                customLoras[key].s3Key = preloadResult.data.s3Key;
+                                localStorage.setItem('customLoras', JSON.stringify(customLoras));
+                            }
+                        } catch (preloadError) {
+                            console.error('Pre-load failed:', preloadError);
+                            // Don't fail the upload, just log the error
+                        }
+                        
                         // Clear file input
                         fileInput.value = '';
                         
                         // Hide progress and show success
-                        progressDiv.style.display = 'none';
-                        alert(`LoRA "${loraName}" uploaded successfully!`);
+                        setTimeout(() => {
+                            progressDiv.style.display = 'none';
+                            alert(`LoRA "${loraName}" uploaded and pre-loaded successfully!`);
+                        }, 1000);
                         
                         // Auto-select the newly uploaded LoRA
                         const loraSelect = document.getElementById('loraSelect');

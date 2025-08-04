@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Inspect Storage</title>
+</head>
+<body>
+    <h1>Inspect All Storage</h1>
+    
+    <h2>LocalStorage Contents:</h2>
+    <div id="localStorage"></div>
+    
+    <h2>SessionStorage Contents:</h2>
+    <div id="sessionStorage"></div>
+    
+    <button onclick="nukeStor age()" style="background: red; color: white; padding: 10px; font-size: 16px;">
+        Nuclear Option - Clear EVERYTHING
+    </button>
+    
+    <script>
+    // Show all localStorage
+    function showStorage() {
+        let localHtml = '<pre>';
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const value = localStorage.getItem(key);
+            localHtml += `${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}\n`;
+        }
+        localHtml += '</pre>';
+        document.getElementById('localStorage').innerHTML = localHtml || '<p>Empty</p>';
+        
+        let sessionHtml = '<pre>';
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            const value = sessionStorage.getItem(key);
+            sessionHtml += `${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}\n`;
+        }
+        sessionHtml += '</pre>';
+        document.getElementById('sessionStorage').innerHTML = sessionHtml || '<p>Empty</p>';
+    }
+    
+    function nukeStorage() {
+        if (confirm('This will clear ALL localStorage and sessionStorage. Are you sure?')) {
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Also try to clear any Firebase/app specific caches
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => caches.delete(name));
+                });
+            }
+            
+            alert('All storage cleared! Please go back to the main app and do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R)');
+            showStorage();
+        }
+    }
+    
+    showStorage();
+    
+    // Auto refresh every second to see changes
+    setInterval(showStorage, 1000);
+    </script>
+</body>
+</html>
