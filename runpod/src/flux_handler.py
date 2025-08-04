@@ -464,7 +464,7 @@ class FluxHandler:
             logger.error(f"Failed to queue prompt: {str(e)}")
             raise
     
-    def wait_for_image(self, prompt_id: str, timeout: int = 300) -> bytes:
+    def wait_for_image(self, prompt_id: str, timeout: int = 600) -> bytes:
         """Wait for and retrieve generated image"""
         start_time = time.time()
         
